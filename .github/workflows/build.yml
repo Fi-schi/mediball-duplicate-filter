@@ -1,0 +1,158 @@
+name: Build Executables for All Platforms
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows Executable
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      
+      - name: Build Executable
+        run: |
+          pyinstaller --name=Mediball_Duplikat_Filter --onefile --windowed mediball_duplicate_finder_production_V7.py
+      
+      - name: Upload Windows Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mediball-Filter-Windows
+          path: dist/Mediball_Duplikat_Filter.exe
+          retention-days: 90
+
+  build-mac:
+    name: Build Mac Executable
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install -r requirements.txt
+          pip3 install pyinstaller
+      
+      - name: Build Executable
+        run: |
+          pyinstaller --name=Mediball_Duplikat_Filter --onefile --windowed mediball_duplicate_finder_production_V7.py
+      
+      - name: Make Executable
+        run: chmod +x dist/Mediball_Duplikat_Filter
+      
+      - name: Upload Mac Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mediball-Filter-Mac
+          path: dist/Mediball_Duplikat_Filter
+          retention-days: 90
+
+  build-linux:
+    name: Build Linux Executable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install -r requirements.txt
+          pip3 install pyinstaller
+      
+      - name: Build Executable
+        run: |
+          pyinstaller --name=Mediball_Duplikat_Filter --onefile --windowed mediball_duplicate_finder_production_V7.py
+      
+      - name: Make Executable
+        run: chmod +x dist/Mediball_Duplikat_Filter
+      
+      - name: Upload Linux Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mediball-Filter-Linux
+          path: dist/Mediball_Duplikat_Filter
+          retention-days: 90
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-windows, build-mac, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: List files for debugging
+        run: |
+          echo "=== Windows ==="
+          ls -la artifacts/Mediball-Filter-Windows/
+          echo "=== Mac ==="
+          ls -la artifacts/Mediball-Filter-Mac/
+          echo "=== Linux ==="
+          ls -la artifacts/Mediball-Filter-Linux/
+      
+      - name: Rename files for release
+        run: |
+          mv artifacts/Mediball-Filter-Windows/Mediball_Duplikat_Filter.exe artifacts/Mediball_Duplikat_Filter_Windows.exe
+          mv artifacts/Mediball-Filter-Mac/Mediball_Duplikat_Filter artifacts/Mediball_Duplikat_Filter_Mac
+          mv artifacts/Mediball-Filter-Linux/Mediball_Duplikat_Filter artifacts/Mediball_Duplikat_Filter_Linux
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/Mediball_Duplikat_Filter_Windows.exe
+            artifacts/Mediball_Duplikat_Filter_Mac
+            artifacts/Mediball_Duplikat_Filter_Linux
+          body: |
+            ## 🎭 Mediball Duplikat-Filter V7
+            
+            ### Downloads:
+            - **Windows:** `Mediball_Duplikat_Filter_Windows.exe`
+            - **Mac:** `Mediball_Duplikat_Filter_Mac`
+            - **Linux:** `Mediball_Duplikat_Filter_Linux`
+            
+            ### Features:
+            ✅ Name-basierte Duplikat-Erkennung (primär)
+            ✅ Email-basierte Duplikate (zusätzlich)
+            ✅ Begleitungs-Duplikate (Person + Begleitung)
+            ✅ Robuste CSV-Verarbeitung (UTF-8 BOM, Komma/Semikolon)
+            ✅ Detaillierter Report mit modus-Spalte
+            
+            ### Installation:
+            1. Download für dein OS
+            2. Doppelklick (keine Installation nötig)
+            3. Bei Mac/Linux: `chmod +x` und Rechtsklick → Öffnen
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
