@@ -6,10 +6,12 @@ import traceback
 import re
 import csv
 
+__version__ = "1.0.0"
+
 class MediballDuplicateFinder:
     def __init__(self, root):
         self.root = root
-        self.root.title("Mediball CSV Duplikat-Filter")
+        self.root.title(f"Mediball CSV Duplikat-Filter v{__version__}")
         self.root.geometry("850x700")
         self.root.resizable(True, True)
         
