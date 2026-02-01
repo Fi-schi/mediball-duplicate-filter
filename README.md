@@ -1,6 +1,10 @@
 # 🎭 Mediball Duplikat-Filter V7
 
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/Fi-schi/mediball-duplicate-filter/releases/latest)
+
 Professionelles Tool zum Filtern von Duplikaten in Mediball-CSV-Anmeldungen.
+
+**Aktuelle Version: 1.0.0** 🎉
 
 ## 📥 Download
 
@@ -105,3 +109,15 @@ pip install -r requirements.txt pyinstaller
 
 # Build
 pyinstaller --name=Mediball_Filter --onefile --windowed mediball_duplicate_finder_production_V7.py
+```
+
+### Release erstellen
+
+Siehe [RELEASE.md](RELEASE.md) für detaillierte Anweisungen zum Erstellen einer neuen Release-Version.
+
+**Kurzanleitung:**
+1. Version in `VERSION`, `mediball_duplicate_finder_production_V7.py` und `CHANGELOG.md` aktualisieren
+2. Änderungen committen
+3. Tag erstellen: `git tag -a v1.0.0 -m "Release version 1.0.0"`
+4. Tag pushen: `git push origin v1.0.0`
+5. GitHub Actions baut automatisch die Executables und erstellt das Release
