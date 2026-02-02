@@ -197,7 +197,7 @@ class MediballDuplicateFinder:
         text = re.sub(r'\s+', ' ', text)
         
         # ✅ V7.1: Normalisiere deutsche Umlaute für bessere Duplikat-Erkennung
-        # Behandelt Fälle wie "Pflücke" vs "pluecke" oder "GMX" Variationen
+        # Behandelt Fälle wie "Pflücke" vs "Pfluecke" oder "Müller" vs "Mueller"
         # WICHTIG: Umlaut-Normalisierung VOR Lowercase-Konvertierung!
         umlaut_map = {
             'Ä': 'Ae',
