@@ -211,7 +211,12 @@ class MediballDuplicateFinder:
         """
         if not email or '@' not in email:
             return False
-        domain = email.split('@')[1]
+        
+        parts = email.split('@')
+        if len(parts) != 2 or not parts[1]:
+            return False
+        
+        domain = parts[1]
         return (
             domain.startswith('uni-') or 
             '.uni.' in domain or
@@ -418,7 +423,8 @@ class MediballDuplicateFinder:
         # Splitte bei gängigen Trennern
         # Trenne bei: ; & "und" "Und" Zeilenumbruch (aber NICHT bei Komma allein, 
         # da Komma für "Nachname, Vorname" verwendet wird)
-        parts = re.split(r'[;&\n]|\sund\s|\sUnd\s', text, flags=re.IGNORECASE)
+        # \b für Wortgrenzen um "und" auch am Anfang/Ende zu matchen
+        parts = re.split(r'[;&\n]|\bund\b', text, flags=re.IGNORECASE)
         
         # Normalisiere jeden Teil
         names = []
