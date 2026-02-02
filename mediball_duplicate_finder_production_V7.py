@@ -201,14 +201,14 @@ class MediballDuplicateFinder:
     def clean_email(self, email):
         """
         V7.2: Robuste Email-Säuberung
-        - Entfernt mailto:, MAILTO:
+        - Entfernt mailto:, MAILTO: Präfixe
         - Entfernt Leerzeichen
         - Nimmt erste Email bei mehreren (getrennt durch ; oder ,)
         - Lowercase
         
         Beispiele:
         - MAILTO:max@uni.de → max@uni.de
-        - max @uni.de ; max@gmail.com → max@uni.de
+        - max@uni.de;max@gmail.com → max@uni.de
         """
         if pd.isna(email) or email is None:
             return ""
@@ -657,9 +657,23 @@ class MediballDuplicateFinder:
                             erste_email = erste_anmeldung['_email_clean']
                             
                             # Prüfe ob eine Uni-Email und die andere nicht
-                            # Uni-Domains: @uni-, -uni., .uni., .edu, .ac.
-                            dup_is_uni = any(domain in dup_email for domain in ['@uni-', '-uni.', '.uni.', '.edu', '.ac.'])
-                            erste_is_uni = any(domain in erste_email for domain in ['@uni-', '-uni.', '.uni.', '.edu', '.ac.'])
+                            # Uni-Domains: @uni-, .uni., @*.edu, @*.ac.
+                            # Verwende @ am Anfang um false positives zu vermeiden
+                            def is_uni_email(email):
+                                if not email or '@' not in email:
+                                    return False
+                                domain = email.split('@')[1]
+                                return (
+                                    domain.startswith('uni-') or 
+                                    '.uni.' in domain or
+                                    domain.endswith('.edu') or 
+                                    domain.endswith('.ac.uk') or
+                                    domain.endswith('.ac.at') or
+                                    domain.endswith('.ac.de')
+                                )
+                            
+                            dup_is_uni = is_uni_email(dup_email)
+                            erste_is_uni = is_uni_email(erste_email)
                             
                             if dup_is_uni and not erste_is_uni:
                                 email_hinweis = f" 🎓 HINWEIS: Uni-Email ({dup_row['Uni-Mail']}) vs. Private Email ({erste_anmeldung['Uni-Mail']}) - Uni-Email hat Priorität!"
@@ -722,10 +736,11 @@ class MediballDuplicateFinder:
                             if len(name1) > 0 and len(name2) > 0:
                                 # Prüfe auf sehr ähnliche Namen (z.B. ein Buchstabe Unterschied)
                                 if abs(len(name1) - len(name2)) <= 1:
-                                    # Zähle unterschiedliche Zeichen
-                                    diff_count = sum(1 for a, b in zip(name1, name2) if a != b)
-                                    if len(name1) != len(name2):
-                                        diff_count += abs(len(name1) - len(name2))
+                                    # Zähle unterschiedliche Zeichen nur für gemeinsame Länge
+                                    min_len = min(len(name1), len(name2))
+                                    diff_count = sum(1 for a, b in zip(name1[:min_len], name2[:min_len]) if a != b)
+                                    # Addiere Längenunterschied
+                                    diff_count += abs(len(name1) - len(name2))
                                     
                                     if diff_count <= 2:
                                         typo_hint = " (Möglicher Tippfehler im Namen!)"
