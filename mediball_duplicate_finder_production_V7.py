@@ -6,7 +6,7 @@ import traceback
 import re
 import csv
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 class MediballDuplicateFinder:
     def __init__(self, root):
@@ -195,8 +195,25 @@ class MediballDuplicateFinder:
         text = str(text).strip()
         # ✅ V7: Entferne mehrfache Leerzeichen
         text = re.sub(r'\s+', ' ', text)
+        
+        # ✅ V7.1: Normalisiere deutsche Umlaute für bessere Duplikat-Erkennung
+        # Behandelt Fälle wie "Pflücke" vs "pluecke" oder "GMX" Variationen
+        # WICHTIG: Umlaut-Normalisierung VOR Lowercase-Konvertierung!
+        umlaut_map = {
+            'Ä': 'Ae',
+            'Ö': 'Oe',
+            'Ü': 'Ue',
+            'ä': 'ae',
+            'ö': 'oe',
+            'ü': 'ue',
+            'ß': 'ss'
+        }
+        for umlaut, replacement in umlaut_map.items():
+            text = text.replace(umlaut, replacement)
+        
         if not self.case_sensitive.get():
             text = text.lower()
+        
         return text
     
     def extract_names_from_begleitung(self, text):
