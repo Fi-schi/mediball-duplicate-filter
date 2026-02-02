@@ -1,10 +1,10 @@
-# 🎭 Mediball Duplikat-Filter V7.2
+# 🎭 Mediball Duplikat-Filter V7.5
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/Fi-schi/mediball-duplicate-filter/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/Fi-schi/mediball-duplicate-filter/releases/latest)
 
 Professionelles Tool zum Filtern von Duplikaten in Mediball-CSV-Anmeldungen.
 
-**Aktuelle Version: 1.2.0** 🎉
+**Aktuelle Version: 1.5.0** 🎉
 
 ## 📥 Download
 
@@ -27,13 +27,20 @@ Wähle die passende Version für dein Betriebssystem:
 - ✅ **Typo-Erkennung** (z.B. "Freytagg" vs "Freytag" mit Levenshtein-Distance)
 - 🎓 **Uni-Email hat HÖCHSTE PRIORITÄT** (@uni-rostock.de wird immer bevorzugt)
 
-### Text-Normalisierung (V7.2)
+### Text-Normalisierung (V7.5)
 - ✅ **Bidirektionale Umlaut-Normalisierung** ("Pflücke" = "Pfluecke" = "pfluecke")
 - ✅ **"Nachname, Vorname" Erkennung** ("Mustermann, Max" → "Max Mustermann")
 - ✅ **Titel-Entfernung** ("Dr. Max Mustermann" = "Max Mustermann")
 - ✅ **Bindestriche normalisieren** ("Müller-Lüdenscheidt" = "Müller Lüdenscheidt")
 - ✅ **Apostrophe normalisieren** (O'Connor mit verschiedenen Unicode-Varianten)
-- ✅ **Email-Säuberung** (mailto:, Leerzeichen, mehrfache Emails)
+- ✅ **Email-Säuberung** (mailto:, Leerzeichen, mehrfache Emails, Komma-Trennung)
+- ✅ **Non-Breaking Space** (\u00A0 wird erkannt und normalisiert)
+- ✅ **Begleitungs-Trenner** (/, +, | werden erkannt)
+
+### Verdachtsfälle-Report (V7.5 NEU) ⚠️
+- ⚠️ **Verdachtsfälle-Report** - Ähnliche Namen mit unterschiedlichen Emails werden gemeldet
+- Diese Fälle werden NICHT automatisch gelöscht, sondern nur im Report aufgeführt
+- Ermöglicht manuelle Prüfung von möglichen Tippfehlern (z.B. "Mustermann" vs "Musterman")
 
 ### Technisch
 - ✅ **Robuste CSV-Verarbeitung** (UTF-8 BOM, Komma/Semikolon, csv.Sniffer)
@@ -105,10 +112,11 @@ O'Connor (verschiedene Unicode-Varianten) → o'connor
 
 ### 3. Ergebnis
 
-**Zwei Dateien werden erstellt:**
+**Drei Dateien werden erstellt:**
 
 1. **`*_bereinigt.csv`** - Bereinigte Anmeldungen (nur eindeutige)
 2. **`*_entfernte_duplikate.csv`** - Report aller entfernten Duplikate
+3. **`*_verdachtsfaelle.csv`** - ⚠️ Verdachtsfälle (ähnliche Namen, manuell prüfen)
 
 ## 📊 Filter-Modi
 
@@ -128,12 +136,13 @@ O'Connor (verschiedene Unicode-Varianten) → o'connor
 
 Der Report enthält eine Spalte `modus` zum einfachen Filtern:
 
-| modus | Bedeutung |
-|-------|-----------|
-| `begleitung` | Person hat sich selbst + als Begleitung angemeldet |
-| `person_name` | Gleicher Name, mehrfach angemeldet (primär) |
-| `person_email` | Gleiche Email, unterschiedlicher Name (Tippfehler im Namen?) |
-| `person_typo` | Ähnlicher Name + gleiche Email (Levenshtein-Distance ≤ 2) |
+| modus | Bedeutung | Datei |
+|-------|-----------|-------|
+| `begleitung` | Person hat sich selbst + als Begleitung angemeldet | entfernte_duplikate.csv |
+| `person_name` | Gleicher Name, mehrfach angemeldet (primär) | entfernte_duplikate.csv |
+| `person_email` | Gleiche Email, unterschiedlicher Name (Tippfehler im Namen?) | entfernte_duplikate.csv |
+| `person_typo` | Ähnlicher Name + gleiche Email (Levenshtein-Distance ≤ 2) | entfernte_duplikate.csv |
+| `suspicious` | ⚠️ Ähnliche Namen (Distance 1-2), unterschiedliche Emails - NICHT gelöscht! | verdachtsfaelle.csv |
 
 ## ⚠️ Wichtig
 
@@ -195,6 +204,15 @@ Siehe [RELEASE.md](RELEASE.md) für detaillierte Anweisungen zum Erstellen einer
 5. GitHub Actions baut automatisch die Executables und erstellt das Release
 
 ## 📝 Changelog
+
+### V7.5 (2026-02-02) - FINAL Production-Ready
+- 🐛 **Bug Fix 1:** Email-Split funktioniert jetzt auch bei Komma (regex: `[;,]`)
+- 🐛 **Bug Fix 2:** Non-Breaking Space (`\u00A0`) wird erkannt und normalisiert
+- 🐛 **Bug Fix 3:** Mehr Begleitungs-Trenner (`/`, `+`, `|`) werden erkannt
+- ⚠️ **Neu:** Verdachtsfälle-Report für ähnliche Namen mit unterschiedlichen Emails
+- ✅ Levenshtein-Distance Implementierung für präzise Ähnlichkeitsmessung
+- ✅ Verdachtsfälle (Distance 1-2) werden NICHT automatisch gelöscht
+- 📊 Neuer Report `*_verdachtsfaelle.csv` für manuelle Prüfung
 
 ### V7.2 (2025-02-02)
 - ✅ Bidirektionale Umlaut-Normalisierung (Pflücke = Pfluecke)
