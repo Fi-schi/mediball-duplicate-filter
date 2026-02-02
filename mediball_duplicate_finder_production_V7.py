@@ -198,6 +198,29 @@ class MediballDuplicateFinder:
             self.process_button.config(state="normal")
     
     
+    
+    def is_uni_email(self, email):
+        """
+        V7.2: Prüft ob eine Email eine Universitäts-Email ist
+        
+        Uni-Domains:
+        - uni- am Anfang (z.B. uni-rostock.de)
+        - .uni. im Domain
+        - .edu Domain
+        - .ac.uk, .ac.at, .ac.de Domains
+        """
+        if not email or '@' not in email:
+            return False
+        domain = email.split('@')[1]
+        return (
+            domain.startswith('uni-') or 
+            '.uni.' in domain or
+            domain.endswith('.edu') or 
+            domain.endswith('.ac.uk') or
+            domain.endswith('.ac.at') or
+            domain.endswith('.ac.de')
+        )
+    
     def clean_email(self, email):
         """
         V7.2: Robuste Email-Säuberung
@@ -223,7 +246,7 @@ class MediballDuplicateFinder:
         
         # Bei mehreren Emails (getrennt durch ; oder ,), nimm die erste
         if ';' in email or ',' in email:
-            email = re.split(r'[;,]', email)[0].strip()
+            email = re.split(r'[;,]', email)[0]
         
         # Lowercase
         email = email.lower()
@@ -657,23 +680,8 @@ class MediballDuplicateFinder:
                             erste_email = erste_anmeldung['_email_clean']
                             
                             # Prüfe ob eine Uni-Email und die andere nicht
-                            # Uni-Domains: @uni-, .uni., @*.edu, @*.ac.
-                            # Verwende @ am Anfang um false positives zu vermeiden
-                            def is_uni_email(email):
-                                if not email or '@' not in email:
-                                    return False
-                                domain = email.split('@')[1]
-                                return (
-                                    domain.startswith('uni-') or 
-                                    '.uni.' in domain or
-                                    domain.endswith('.edu') or 
-                                    domain.endswith('.ac.uk') or
-                                    domain.endswith('.ac.at') or
-                                    domain.endswith('.ac.de')
-                                )
-                            
-                            dup_is_uni = is_uni_email(dup_email)
-                            erste_is_uni = is_uni_email(erste_email)
+                            dup_is_uni = self.is_uni_email(dup_email)
+                            erste_is_uni = self.is_uni_email(erste_email)
                             
                             if dup_is_uni and not erste_is_uni:
                                 email_hinweis = f" 🎓 HINWEIS: Uni-Email ({dup_row['Uni-Mail']}) vs. Private Email ({erste_anmeldung['Uni-Mail']}) - Uni-Email hat Priorität!"
@@ -739,7 +747,7 @@ class MediballDuplicateFinder:
                                     # Zähle unterschiedliche Zeichen nur für gemeinsame Länge
                                     min_len = min(len(name1), len(name2))
                                     diff_count = sum(1 for a, b in zip(name1[:min_len], name2[:min_len]) if a != b)
-                                    # Addiere Längenunterschied
+                                    # Addiere Anzahl der Zeichen über die gemeinsame Länge hinaus
                                     diff_count += abs(len(name1) - len(name2))
                                     
                                     if diff_count <= 2:
