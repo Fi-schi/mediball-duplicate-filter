@@ -4,7 +4,7 @@
 
 Professionelles Tool zum Filtern von Duplikaten in Mediball-CSV-Anmeldungen.
 
-**Aktuelle Version: 1.0.0** 🎉
+**Aktuelle Version: 1.2.0** 🎉
 
 ## 📥 Download
 
@@ -27,7 +27,7 @@ Wähle die passende Version für dein Betriebssystem:
 - ✅ **Typo-Erkennung** (z.B. "Freytagg" vs "Freytag" mit Levenshtein-Distance)
 - 🎓 **Uni-Email hat HÖCHSTE PRIORITÄT** (@uni-rostock.de wird immer bevorzugt)
 
-### Text-Normalisierung (V7.2 Ultimate)
+### Text-Normalisierung (V7.2)
 - ✅ **Bidirektionale Umlaut-Normalisierung** ("Pflücke" = "Pfluecke" = "pfluecke")
 - ✅ **"Nachname, Vorname" Erkennung** ("Mustermann, Max" → "Max Mustermann")
 - ✅ **Titel-Entfernung** ("Dr. Max Mustermann" = "Max Mustermann")
@@ -196,7 +196,7 @@ Siehe [RELEASE.md](RELEASE.md) für detaillierte Anweisungen zum Erstellen einer
 
 ## 📝 Changelog
 
-### V7.2 Ultimate (2025-02-02)
+### V7.2 (2025-02-02)
 - ✅ Bidirektionale Umlaut-Normalisierung (Pflücke = Pfluecke)
 - ✅ "Nachname, Vorname" Erkennung und automatisches Drehen
 - ✅ Titel-Entfernung (Dr., Prof., med., cand., etc.)
