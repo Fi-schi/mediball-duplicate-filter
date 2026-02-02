@@ -5,6 +5,52 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [1.5.0] - 2026-02-02 - V7.5 FINAL Production-Ready
+
+### Hinzugefügt
+- ✨ **Levenshtein-Distance Algorithmus (`levenshtein_distance()` Methode)**
+  - Berechnet präzise die Ähnlichkeit zwischen zwei Strings
+  - Verwendet für Verdachtsfälle-Erkennung (Distance 1-2)
+  - Beispiele: "Mustermann" vs "Musterman" = Distance 1
+
+- ⚠️ **Verdachtsfälle-Report (`find_verdachtsfaelle()` Methode)**
+  - Findet ähnliche Namen (Distance 1-2) mit unterschiedlichen Emails
+  - Diese werden NICHT automatisch gelöscht
+  - Neue Report-Datei: `*_verdachtsfaelle.csv`
+  - Ermöglicht manuelle Prüfung von möglichen Tippfehlern
+  - Beispiel: "Mustermann" (max@uni.de) vs "Musterman" (lisa@gmx.de)
+
+### Bug-Fixes
+- 🐛 **Bug Fix 1: Email-Split bei Komma**
+  - Problem: `re.split(r'[;]', email)` hat nur bei Semikolon getrennt
+  - Fix: `re.split(r'[;,]', email)` trennt jetzt bei beiden Zeichen
+  - Beispiel: `"max@uni.de, lisa@uni.de"` → nimmt jetzt korrekt `"max@uni.de"`
+
+- 🐛 **Bug Fix 2: Non-Breaking Space Normalisierung**
+  - Problem: Non-Breaking Space (`\u00A0`) aus PDFs/Word wurde nicht erkannt
+  - Fix: `text.replace('\u00A0', ' ')` in `normalize_text()`
+  - Beispiel: `"Max\u00A0Mustermann"` matcht jetzt mit `"Max Mustermann"`
+
+- 🐛 **Bug Fix 3: Mehr Begleitungs-Trenner**
+  - Problem: User tippen Begleitungen mit `/`, `+`, `|`
+  - Fix: `re.split(r'[;&\n/+|]|\bund\b', text)` erkennt jetzt alle Trenner
+  - Beispiele: `"Max / Lisa"`, `"Max + Paul"`, `"Max | Lisa"` werden korrekt getrennt
+
+### Verbessert
+- 📊 **Drei Output-Dateien statt zwei**
+  - `*_bereinigt.csv` - Bereinigte Anmeldungen
+  - `*_entfernte_duplikate.csv` - Entfernte Duplikate (wie bisher)
+  - `*_verdachtsfaelle.csv` - ⚠️ NEU: Verdachtsfälle für manuelle Prüfung
+
+- 📝 **Report-Spalte `modus` erweitert**
+  - Neuer Wert: `suspicious` für Verdachtsfälle
+  - In separater Datei für bessere Übersicht
+
+- 🎨 **UI und Log-Messages aktualisiert**
+  - Info-Box zeigt V7.5 Features und Bug-Fixes
+  - Log-Output zeigt detaillierte V7.5 Informationen
+  - Success-Messagebox zeigt Anzahl der Verdachtsfälle
+
 ## [1.2.0] - 2026-02-02
 
 ### Hinzugefügt
