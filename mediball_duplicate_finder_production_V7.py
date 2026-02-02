@@ -657,8 +657,9 @@ class MediballDuplicateFinder:
                             erste_email = erste_anmeldung['_email_clean']
                             
                             # Prüfe ob eine Uni-Email und die andere nicht
-                            dup_is_uni = any(domain in dup_email for domain in ['.uni-', '.edu', '.ac.'])
-                            erste_is_uni = any(domain in erste_email for domain in ['.uni-', '.edu', '.ac.'])
+                            # Uni-Domains: @uni-, -uni., .uni., .edu, .ac.
+                            dup_is_uni = any(domain in dup_email for domain in ['@uni-', '-uni.', '.uni.', '.edu', '.ac.'])
+                            erste_is_uni = any(domain in erste_email for domain in ['@uni-', '-uni.', '.uni.', '.edu', '.ac.'])
                             
                             if dup_is_uni and not erste_is_uni:
                                 email_hinweis = f" 🎓 HINWEIS: Uni-Email ({dup_row['Uni-Mail']}) vs. Private Email ({erste_anmeldung['Uni-Mail']}) - Uni-Email hat Priorität!"
