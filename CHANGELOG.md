@@ -5,6 +5,19 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [1.1.0] - 2026-02-02
+
+### Hinzugefügt
+- ✨ **Deutsche Umlaut-Normalisierung** im Such-Algorithmus
+  - Behandelt automatisch Variationen wie "Müller" vs "Mueller"
+  - Normalisiert ä→ae, ö→oe, ü→ue, ß→ss
+  - Verbessert Duplikat-Erkennung für Namen mit Umlauten
+  - Beispiele: "Schäfer"="Schaefer", "Größe"="Groesse", "Pflücke"="Pfluecke"
+
+### Verbessert
+- Robustere Namens-Erkennung bei verschiedenen Schreibweisen
+- Bessere Duplikat-Erkennung für deutsche Namen
+
 ## [1.0.0] - 2026-02-01
 
 ### Hinzugefügt
