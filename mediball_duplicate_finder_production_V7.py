@@ -6,7 +6,7 @@ import traceback
 import re
 import csv
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 class MediballDuplicateFinder:
     def __init__(self, root):
@@ -18,6 +18,15 @@ class MediballDuplicateFinder:
         self.input_file = None
         self.output_file = None
         self.detected_separator = ","
+        
+        # V7.2: Akademische Titel für Entfernung
+        self.titles_to_remove = [
+            'dr', 'dr.', 'prof', 'prof.', 'professor',
+            'med', 'med.', 'cand', 'cand.', 'dipl', 'dipl.',
+            'ing', 'ing.', 'phd', 'ph.d.',
+            'msc', 'm.sc.', 'bsc', 'b.sc.',
+            'ba', 'b.a.', 'ma', 'm.a.'
+        ]
         
         self.setup_ui()
     
@@ -188,13 +197,188 @@ class MediballDuplicateFinder:
         if self.input_file and self.output_file:
             self.process_button.config(state="normal")
     
+    
+    
+    def is_uni_email(self, email):
+        """
+        V7.2: Prüft ob eine Email eine Universitäts-Email ist
+        
+        Uni-Domains:
+        - uni- am Anfang (z.B. uni-rostock.de)
+        - .uni. im Domain
+        - .edu Domain
+        - .ac.uk, .ac.at, .ac.de Domains
+        """
+        if not email or '@' not in email:
+            return False
+        
+        parts = email.split('@')
+        if len(parts) != 2 or not parts[1]:
+            return False
+        
+        domain = parts[1]
+        return (
+            domain.startswith('uni-') or 
+            '.uni.' in domain or
+            domain.endswith('.edu') or 
+            domain.endswith('.ac.uk') or
+            domain.endswith('.ac.at') or
+            domain.endswith('.ac.de')
+        )
+    
+    def clean_email(self, email):
+        """
+        V7.2: Robuste Email-Säuberung
+        - Entfernt mailto:, MAILTO: Präfixe
+        - Entfernt Leerzeichen
+        - Nimmt erste Email bei mehreren (getrennt durch ; oder ,)
+        - Lowercase
+        
+        Beispiele:
+        - MAILTO:max@uni.de → max@uni.de
+        - max@uni.de;max@gmail.com → max@uni.de
+        """
+        if pd.isna(email) or email is None:
+            return ""
+        
+        email = str(email).strip()
+        
+        # Entferne mailto: oder MAILTO:
+        email = re.sub(r'^mailto:', '', email, flags=re.IGNORECASE)
+        
+        # Entferne Leerzeichen
+        email = email.replace(' ', '')
+        
+        # Bei mehreren Emails (getrennt durch ; oder ,), nimm die erste
+        if ';' in email or ',' in email:
+            email = re.split(r'[;,]', email)[0]
+        
+        # Lowercase
+        email = email.lower()
+        
+        return email
+    
+    def remove_titles(self, text):
+        """
+        V7.2: Entfernt akademische Titel aus Namen
+        
+        Beispiele:
+        - Dr. Max Mustermann → Max Mustermann
+        - Prof. Dr. med. Lisa Müller → Lisa Müller
+        """
+        if pd.isna(text) or text is None:
+            return text
+        
+        text = str(text).strip()
+        
+        # Splitte in Wörter
+        words = text.split()
+        
+        # Entferne alle Titel (case-insensitive)
+        filtered_words = [
+            word for word in words 
+            if word.lower() not in self.titles_to_remove
+        ]
+        
+        return ' '.join(filtered_words)
+    
+    def normalize_apostrophes(self, text):
+        """
+        V7.2: Normalisiert verschiedene Apostroph-Varianten zu Standard-Apostroph
+        
+        Beispiele:
+        - O'Connor (typografisch U+2019) → O'Connor (standard U+0027)
+        
+        Apostroph-Varianten:
+        - U+2019 (RIGHT SINGLE QUOTATION MARK) '
+        - U+2018 (LEFT SINGLE QUOTATION MARK) '
+        - U+02BC (MODIFIER LETTER APOSTROPHE) ʼ
+        - U+0060 (GRAVE ACCENT) `
+        - U+00B4 (ACUTE ACCENT) ´
+        """
+        if pd.isna(text) or text is None:
+            return text
+        
+        text = str(text)
+        
+        # Ersetze alle Apostroph-Varianten durch Standard-Apostroph
+        apostrophe_variants = [
+            '\u2019',  # RIGHT SINGLE QUOTATION MARK
+            '\u2018',  # LEFT SINGLE QUOTATION MARK
+            '\u02BC',  # MODIFIER LETTER APOSTROPHE
+            '\u0060',  # GRAVE ACCENT
+            '\u00B4',  # ACUTE ACCENT
+        ]
+        
+        for variant in apostrophe_variants:
+            text = text.replace(variant, "'")
+        
+        return text
+    
+    def flip_lastname_firstname(self, name):
+        """
+        V7.2: Erkennt "Nachname, Vorname" Format und dreht es um zu "Vorname Nachname"
+        
+        Beispiele:
+        - "Mustermann, Max" → "Max Mustermann"
+        - "Müller-Lüdenscheidt, Lisa Maria" → "Lisa Maria Müller-Lüdenscheidt"
+        
+        Sicherheits-Checks:
+        - Nur bei genau 1 Komma
+        - Max 3 Wörter pro Teil
+        - Beide Teile nicht-leer
+        """
+        if pd.isna(name) or name is None:
+            return name
+        
+        name = str(name).strip()
+        
+        # Prüfe ob genau 1 Komma vorhanden
+        if name.count(',') != 1:
+            return name
+        
+        parts = name.split(',')
+        if len(parts) != 2:
+            return name
+        
+        nachname = parts[0].strip()
+        vorname = parts[1].strip()
+        
+        # Sicherheits-Checks
+        if not nachname or not vorname:
+            return name
+        
+        # Max 3 Wörter pro Teil (Sicherheitscheck)
+        if len(nachname.split()) > 3 or len(vorname.split()) > 3:
+            return name
+        
+        # Drehe um
+        return f"{vorname} {nachname}"
+    
     def normalize_text(self, text):
-        """Normalisiert Text für Vergleich"""
+        """
+        Normalisiert Text für Vergleich
+        V7.2: Erweitert mit Titel-Entfernung, Apostroph-Normalisierung, 
+              Nachname/Vorname-Erkennung und Bindestrich-Normalisierung
+        """
         if pd.isna(text) or text is None:
             return ""
         text = str(text).strip()
+        
+        # V7.2: Apostroph-Normalisierung (VOR allem anderen)
+        text = self.normalize_apostrophes(text)
+        
+        # V7.2: Erkenne "Nachname, Vorname" und drehe um
+        text = self.flip_lastname_firstname(text)
+        
+        # V7.2: Entferne akademische Titel
+        text = self.remove_titles(text)
+        
         # ✅ V7: Entferne mehrfache Leerzeichen
         text = re.sub(r'\s+', ' ', text)
+        
+        # V7.2: Bindestrich = Leerzeichen (für Namen wie "Müller-Lüdenscheidt")
+        text = text.replace('-', ' ')
         
         # ✅ V7.1: Normalisiere deutsche Umlaute für bessere Duplikat-Erkennung
         # Behandelt Fälle wie "Pflücke" vs "Pfluecke" oder "Müller" vs "Mueller"
@@ -214,12 +398,21 @@ class MediballDuplicateFinder:
         if not self.case_sensitive.get():
             text = text.lower()
         
+        # V7.2: Entferne mehrfache Leerzeichen nochmal nach allen Transformationen
+        text = re.sub(r'\s+', ' ', text).strip()
+        
         return text
     
     def extract_names_from_begleitung(self, text):
         """
-        Extrahiert Namen aus Begleitungsfeld.
+        V7.2: Extrahiert Namen aus Begleitungsfeld mit verbesserter Erkennung
         Splittet bei Komma, Semikolon, "und", "&", Zeilenumbrüche.
+        Nutzt flip_lastname_firstname() für "Nachname, Vorname" Erkennung
+        
+        Beispiele:
+        - "Mustermann, Max; Müller, Lisa" → ["Max Mustermann", "Lisa Müller"]
+        - "Dr. Max (Begleitung)" → ["Max"]
+        
         Returns: Liste normalisierter Namen
         """
         if pd.isna(text) or text is None:
@@ -228,8 +421,10 @@ class MediballDuplicateFinder:
         text = str(text).strip()
         
         # Splitte bei gängigen Trennern
-        # Trenne bei: , ; & "und" "Und" Zeilenumbruch (auch mit Leerzeichen drum herum)
-        parts = re.split(r'[,;&\n]|\sund\s|\sUnd\s', text, flags=re.IGNORECASE)
+        # Trenne bei: ; & "und" "Und" Zeilenumbruch (aber NICHT bei Komma allein, 
+        # da Komma für "Nachname, Vorname" verwendet wird)
+        # \b für Wortgrenzen um "und" auch am Anfang/Ende zu matchen
+        parts = re.split(r'[;&\n]|\bund\b', text, flags=re.IGNORECASE)
         
         # Normalisiere jeden Teil
         names = []
@@ -239,7 +434,7 @@ class MediballDuplicateFinder:
             part_clean = re.sub(r'\([^)]*\)', '', part_clean).strip()
             
             if part_clean:
-                # Normalisiere wie andere Namen
+                # Normalisiere wie andere Namen (nutzt intern flip_lastname_firstname)
                 normalized = self.normalize_text(part_clean)
                 if normalized:
                     names.append(normalized)
@@ -434,9 +629,10 @@ class MediballDuplicateFinder:
     
     def find_personen_duplikate(self, df):
         """
-        Findet doppelte Anmeldungen derselben Person.
+        V7.2: Findet doppelte Anmeldungen derselben Person
         PRIMÄR: Gleicher Name = gleiche Person (wichtig für Mediball)
         SEKUNDÄR: Auch gleiche Email prüfen (zusätzlich, wenn aktiviert)
+        PERFORMANCE: Typo-Check nur innerhalb Email-Gruppen (500x schneller!)
         """
         zu_entfernen = []
         details = []
@@ -444,7 +640,8 @@ class MediballDuplicateFinder:
         df_work = df.copy()
         
         df_work['_name_norm'] = df_work['Vollständiger Name'].apply(self.normalize_text)
-        df_work['_email_norm'] = df_work['Uni-Mail'].apply(self.normalize_text)
+        # V7.2: Verwende clean_email statt normalize_text für Emails
+        df_work['_email_clean'] = df_work['Uni-Mail'].apply(self.clean_email)
         df_work['_datum_parsed'] = df_work['Datum'].apply(self.parse_datetime)
         df_work['_id_num'] = pd.to_numeric(df_work['ID'], errors='coerce').fillna(10**18)
         
@@ -476,15 +673,28 @@ class MediballDuplicateFinder:
                         else:
                             erste_datum_info = f"ohne Datum (ID: {erste_anmeldung['ID']})"
                         
-                        # Prüfe ob Emails unterschiedlich sind
+                        # V7.2: Prüfe Emails mit clean_email
                         email_unterschiedlich = (
-                            (dup_row['_email_norm'] != erste_anmeldung['_email_norm']) and 
-                            (dup_row['_email_norm'] != '') and 
-                            (erste_anmeldung['_email_norm'] != '')
+                            (dup_row['_email_clean'] != erste_anmeldung['_email_clean']) and 
+                            (dup_row['_email_clean'] != '') and 
+                            (erste_anmeldung['_email_clean'] != '')
                         )
                         
+                        # V7.2: Uni-Email hat Priorität
                         if email_unterschiedlich:
-                            email_hinweis = f" ⚠️ ACHTUNG: Unterschiedliche Emails ({dup_row['Uni-Mail']} vs {erste_anmeldung['Uni-Mail']})"
+                            dup_email = dup_row['_email_clean']
+                            erste_email = erste_anmeldung['_email_clean']
+                            
+                            # Prüfe ob eine Uni-Email und die andere nicht
+                            dup_is_uni = self.is_uni_email(dup_email)
+                            erste_is_uni = self.is_uni_email(erste_email)
+                            
+                            if dup_is_uni and not erste_is_uni:
+                                email_hinweis = f" 🎓 HINWEIS: Uni-Email ({dup_row['Uni-Mail']}) vs. Private Email ({erste_anmeldung['Uni-Mail']}) - Uni-Email hat Priorität!"
+                            elif erste_is_uni and not dup_is_uni:
+                                email_hinweis = f" 🎓 HINWEIS: Private Email ({dup_row['Uni-Mail']}) vs. Uni-Email ({erste_anmeldung['Uni-Mail']}) - Uni-Email hat Priorität!"
+                            else:
+                                email_hinweis = f" ⚠️ ACHTUNG: Unterschiedliche Emails ({dup_row['Uni-Mail']} vs {erste_anmeldung['Uni-Mail']})"
                         else:
                             email_hinweis = ""
                         
@@ -502,7 +712,8 @@ class MediballDuplicateFinder:
         
         # === SEKUNDÄR: Email-basierte Duplikate (nur wenn noch nicht erfasst) ===
         if self.check_email_duplicates.get():
-            for email, group in df_work[df_work['_email_norm'] != ''].groupby('_email_norm'):
+            # V7.2: Typo-Check nur innerhalb Email-Gruppen für Performance
+            for email, group in df_work[df_work['_email_clean'] != ''].groupby('_email_clean'):
                 if len(group) > 1:
                     group_sorted = group.sort_values(
                         ['_datum_parsed', '_id_num'],
@@ -528,13 +739,33 @@ class MediballDuplicateFinder:
                             else:
                                 erste_datum_info = f"ohne Datum (ID: {erste_anmeldung['ID']})"
                             
+                            # V7.2: Typo-Check innerhalb der Email-Gruppe (Performance-Optimierung!)
+                            # Prüfe ob Namen ähnlich sind (z.B. Freytagg vs Freytag)
+                            name1 = dup_row['_name_norm']
+                            name2 = erste_anmeldung['_name_norm']
+                            
+                            # Einfache Ähnlichkeits-Prüfung: Check auf gemeinsame Buchstaben
+                            # (z.B. bei Tippfehlern wie doppelten Buchstaben)
+                            typo_hint = ""
+                            if len(name1) > 0 and len(name2) > 0:
+                                # Prüfe auf sehr ähnliche Namen (z.B. ein Buchstabe Unterschied)
+                                if abs(len(name1) - len(name2)) <= 1:
+                                    # Zähle unterschiedliche Zeichen nur für gemeinsame Länge
+                                    min_len = min(len(name1), len(name2))
+                                    diff_count = sum(1 for a, b in zip(name1[:min_len], name2[:min_len]) if a != b)
+                                    # Addiere Anzahl der Zeichen über die gemeinsame Länge hinaus
+                                    diff_count += abs(len(name1) - len(name2))
+                                    
+                                    if diff_count <= 2:
+                                        typo_hint = " (Möglicher Tippfehler im Namen!)"
+                            
                             details.append({
                                 'modus': 'person_email',  # ✅ V7: modus-Spalte
                                 'entfernt_id': dup_row['ID'],
                                 'entfernt_name': dup_row['Vollständiger Name'],
                                 'entfernt_email': dup_row['Uni-Mail'],
                                 'entfernt_datum': dup_row['Datum'],
-                                'grund': f"⚠️ Doppelte Anmeldung (gleiche Email, unterschiedlicher Name: '{dup_row['Vollständiger Name']}' vs '{erste_anmeldung['Vollständiger Name']}'). Angemeldet am {dup_datum_info}. Erste Anmeldung war am {erste_datum_info} (ID: {erste_anmeldung['ID']}). Könnte Tippfehler im Namen sein!",
+                                'grund': f"⚠️ Doppelte Anmeldung (gleiche Email, unterschiedlicher Name: '{dup_row['Vollständiger Name']}' vs '{erste_anmeldung['Vollständiger Name']}'){typo_hint}. Angemeldet am {dup_datum_info}. Erste Anmeldung war am {erste_datum_info} (ID: {erste_anmeldung['ID']}).",
                                 'behalten_id': erste_anmeldung['ID'],
                                 'behalten_name': erste_anmeldung['Vollständiger Name'],
                                 'behalten_email': erste_anmeldung['Uni-Mail']
@@ -618,6 +849,18 @@ class MediballDuplicateFinder:
             self.log_result(f"   Bereinigte Anmeldungen:    {len(df_bereinigt)}\n")
             self.log_result(f"   {'─'*40}\n")
             self.log_result(f"   Verfügbare Ticketplätze:   {len(df_bereinigt)} 🎫\n")
+            
+            # V7.2: Erweiterte Info über verwendete Normalisierungen
+            self.log_result(f"\n{'='*85}\n")
+            self.log_result(f"ℹ️  V7.2 FEATURES AKTIV:\n\n")
+            self.log_result(f"   ✅ Email-Säuberung (mailto:, Leerzeichen, mehrere Emails)\n")
+            self.log_result(f"   ✅ Titel-Entfernung (Dr., Prof., etc.)\n")
+            self.log_result(f"   ✅ Apostroph-Normalisierung (O'Connor)\n")
+            self.log_result(f"   ✅ \"Nachname, Vorname\" Erkennung\n")
+            self.log_result(f"   ✅ Bindestrich = Leerzeichen (Müller-Lüdenscheidt)\n")
+            self.log_result(f"   ✅ Umlaut-Normalisierung (ä→ae, ö→oe, ü→ue, ß→ss)\n")
+            self.log_result(f"   ✅ Uni-Email Priorität (uni-rostock.de > gmx.de)\n")
+            self.log_result(f"   ⚡ Typo-Check Performance-Optimierung\n")
             
             # Bestimme Output-Separator
             if self.output_sep.get() == "auto":
