@@ -253,8 +253,7 @@ class MediballDuplicateFinder:
         
         # Bei mehreren Emails (getrennt durch ; oder ,), nimm die erste
         if ';' in email or ',' in email:
-            parts = re.split(r'[;,]', email)  # ✅ V7.5 FIX: Split bei ; UND ,
-            email = parts[0]
+            email = re.split(r'[;,]', email, maxsplit=1)[0]  # ✅ V7.5 FIX: Split bei ; UND ,
         
         # Lowercase
         email = email.lower()
