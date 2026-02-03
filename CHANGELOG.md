@@ -5,6 +5,38 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [1.6.0] - 2026-02-03 - V7.6 Enhanced Email Processing
+
+### Verbessert
+- 🎯 **Verdachtsfälle-Report komplett überarbeitet** (wichtigster Fix!)
+  - Problem: Gruppierung nach `_name_norm` hat nur identische normalisierte Namen verglichen
+  - Fix: Nachname-Blocking - vergleicht jetzt auch ähnliche Namen wie "Hofmann" vs "Hoffmann"
+  - Findet jetzt echte Verdachtsfälle: "Schmidt" vs "Schmitt", "Mustermann" vs "Musterman"
+  - Performance: O(n²) nur innerhalb Nachname-Blöcke statt global
+  - **Report ist jetzt wirklich nützlich!**
+
+- 📧 **Email-Cleaning erweitert**
+  - Entfernt trailing punctuation: `max@uni.de.` → `max@uni.de`
+  - Entfernt leading/trailing Zeichen: `()[]{}<>.,;:`
+  - Bessere Whitespace-Behandlung (Tabs, Newlines, etc.)
+  - Validierung: Email muss `@` und `.` in Domain enthalten
+
+- 🔍 **Typo-Hint auf Levenshtein umgestellt**
+  - Statt zip/diff-Zählung nutzt jetzt konsistent `levenshtein_distance()`
+  - Präzisere Erkennung von Einfügen/Löschen/Vertauschen
+  - Zeigt Distance im Report für bessere Transparenz
+
+- 👥 **Komma-Liste bei Begleitung erkannt**
+  - Heuristik: 2+ Wörter vor Komma → Vollname-Liste
+  - Beispiel: "Max Mustermann, Marie Mustermann" → beide erkannt
+  - "Mustermann, Max" → weiterhin als "Nachname, Vorname" behandelt
+  - Reduziert false negatives bei Begleitungs-Duplikaten
+
+### Technisch
+- Alle Fixes nutzen bestehende Funktionen (Levenshtein, normalize_text)
+- Keine Breaking Changes
+- Abwärtskompatibel mit V7.5 Daten
+
 ## [1.5.0] - 2026-02-02 - V7.5 FINAL Production-Ready
 
 ### Hinzugefügt
