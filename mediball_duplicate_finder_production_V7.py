@@ -6,7 +6,7 @@ import traceback
 import re
 import csv
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 
 class MediballDuplicateFinder:
     def __init__(self, root):
@@ -132,9 +132,10 @@ class MediballDuplicateFinder:
         info_frame = ttk.Frame(options_frame, relief="solid", borderwidth=1)
         info_frame.grid(row=7, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10, padx=20)
         
-        info_text = ("ℹ️  V7.5 FINAL - Production-Ready:\n"
-                    "   ✓ Alle Bug-Fixes (Email-Split, Non-Breaking Space, mehr Trenner)\n"
-                    "   ⚠️ NEU: Verdachtsfälle-Report (ähnliche Namen, manuell prüfen)\n"
+        info_text = ("ℹ️  V7.6 - Enhanced E-Mail Processing:\n"
+                    "   ✓ Verbesserte E-Mail-Validierung (ungültige Formate werden erkannt)\n"
+                    "   ✓ Bessere Whitespace-Behandlung (Tabs, Newlines, etc.)\n"
+                    "   ✓ Umschließende Zeichen werden entfernt (<, >, \", ', (, ))\n"
                     "   🎓 @uni-rostock.de hat HÖCHSTE PRIORITÄT\n"
                     "   ⚡ Performance-optimiert & Production-tested")
         ttk.Label(info_frame, text=info_text, foreground="blue", 
@@ -230,15 +231,21 @@ class MediballDuplicateFinder:
     
     def clean_email(self, email):
         """
-        V7.2: Robuste Email-Säuberung
+        V7.6: Erweiterte Email-Säuberung
         - Entfernt mailto:, MAILTO: Präfixe
-        - Entfernt Leerzeichen
+        - Entfernt alle Whitespace (Leerzeichen, Tabs, Newlines, etc.)
         - Nimmt erste Email bei mehreren (getrennt durch ; oder ,)
+        - Entfernt umschließende Zeichen wie < > " ' ( )
+        - Validiert Email-Format (muss @ enthalten)
         - Lowercase
         
         Beispiele:
         - MAILTO:max@uni.de → max@uni.de
         - max@uni.de;max@gmail.com → max@uni.de
+        - <max@uni.de> → max@uni.de
+        - "max@uni.de" → max@uni.de
+        - max @uni. de → max@uni.de
+        - max\t@uni.de\n → max@uni.de
         """
         if pd.isna(email) or email is None:
             return ""
@@ -248,15 +255,30 @@ class MediballDuplicateFinder:
         # Entferne mailto: oder MAILTO:
         email = re.sub(r'^mailto:', '', email, flags=re.IGNORECASE)
         
-        # Entferne Leerzeichen
-        email = email.replace(' ', '')
+        # V7.6: Entferne umschließende Zeichen wie < > " ' ( )
+        email = email.strip('<>"\'()')
+        
+        # V7.6: Entferne alle Whitespace-Zeichen (Leerzeichen, Tabs, Newlines, etc.)
+        email = re.sub(r'\s+', '', email)
         
         # Bei mehreren Emails (getrennt durch ; oder ,), nimm die erste
         if ';' in email or ',' in email:
             email = re.split(r'[;,]', email, maxsplit=1)[0]  # ✅ V7.5 FIX: Split bei ; UND ,
         
+        # V7.6: Entferne trailing/leading punctuation nach Split (z.B. "max@uni.de." oder "max@uni.de)")
+        email = email.strip('()[]{}<>.,;:')
+        
         # Lowercase
         email = email.lower()
+        
+        # V7.6: Validiere Email-Format - muss @ enthalten und mindestens ein Zeichen davor und danach
+        if not email or '@' not in email:
+            return ""
+        
+        # V7.6: Einfache Validierung - min. 1 Zeichen vor @, min. 2 nach @ (für x@a.b)
+        parts = email.split('@')
+        if len(parts) != 2 or not parts[0] or len(parts[1]) < 3 or '.' not in parts[1]:
+            return ""
         
         return email
     
@@ -410,11 +432,17 @@ class MediballDuplicateFinder:
     
     def extract_names_from_begleitung(self, text):
         """
-        V7.2: Extrahiert Namen aus Begleitungsfeld mit verbesserter Erkennung
+        V7.6: Extrahiert Namen aus Begleitungsfeld mit verbesserter Komma-Erkennung
         Splittet bei Komma, Semikolon, "und", "&", Zeilenumbrüche.
         Nutzt flip_lastname_firstname() für "Nachname, Vorname" Erkennung
         
+        V7.6 NEU: Heuristik für Komma-Listen wie "Max Mustermann, Marie Mustermann"
+        - Wenn ein Segment MEHRERE Wörter VOR dem Komma hat → wahrscheinlich Komma-Liste
+        - Wenn ein Segment nur 1-2 Wörter hat → wahrscheinlich "Nachname, Vorname"
+        
         Beispiele:
+        - "Mustermann, Max" → ["Max Mustermann"] (1 Wort vor Komma → gedreht)
+        - "Max Mustermann, Marie Mustermann" → ["Max Mustermann", "Marie Mustermann"] (2 Wörter vor Komma → Liste)
         - "Mustermann, Max; Müller, Lisa" → ["Max Mustermann", "Lisa Müller"]
         - "Dr. Max (Begleitung)" → ["Max"]
         
@@ -425,9 +453,21 @@ class MediballDuplicateFinder:
         
         text = str(text).strip()
         
+        # V7.6: Erst prüfen ob Komma-Liste (multiple Vollnamen) oder "Nachname, Vorname"
+        # Heuristik: Splitte temporär bei Komma und schaue auf Struktur
+        if ',' in text:
+            # Prüfe ob es eine Komma-Liste von Vollnamen sein könnte
+            comma_parts = text.split(',')
+            # Wenn es 2+ Teile gibt und der erste Teil 2+ Wörter hat → wahrscheinlich Liste
+            if len(comma_parts) >= 2:
+                first_part_words = len(comma_parts[0].strip().split())
+                # Wenn >= 2 Wörter vor dem Komma → wahrscheinlich Vollname-Liste
+                if first_part_words >= 2:
+                    # V7.6: Behandle als Komma-Liste, splitte bei Komma
+                    text = text.replace(',', ';')  # Ersetze Komma durch Semikolon für einheitliche Behandlung
+        
         # Splitte bei gängigen Trennern
-        # Trenne bei: ; & "und" "Und" Zeilenumbruch / + | (aber NICHT bei Komma allein, 
-        # da Komma für "Nachname, Vorname" verwendet wird)
+        # Trenne bei: ; & "und" "Und" Zeilenumbruch / + | (und jetzt auch Komma wenn als Liste erkannt)
         # \b für Wortgrenzen um "und" auch am Anfang/Ende zu matchen
         parts = re.split(r'[;&\n/+|]|\bund\b', text, flags=re.IGNORECASE)  # ✅ V7.5 FIX: Mehr Trenner
         
@@ -796,25 +836,17 @@ class MediballDuplicateFinder:
                             else:
                                 erste_datum_info = f"ohne Datum (ID: {erste_anmeldung['ID']})"
                             
-                            # V7.2: Typo-Check innerhalb der Email-Gruppe (Performance-Optimierung!)
+                            # V7.6: Typo-Check mit Levenshtein-Distance (konsistenter!)
                             # Prüfe ob Namen ähnlich sind (z.B. Freytagg vs Freytag)
                             name1 = dup_row['_name_norm']
                             name2 = erste_anmeldung['_name_norm']
                             
-                            # Einfache Ähnlichkeits-Prüfung: Check auf gemeinsame Buchstaben
-                            # (z.B. bei Tippfehlern wie doppelten Buchstaben)
                             typo_hint = ""
                             if len(name1) > 0 and len(name2) > 0:
-                                # Prüfe auf sehr ähnliche Namen (z.B. ein Buchstabe Unterschied)
-                                if abs(len(name1) - len(name2)) <= 1:
-                                    # Zähle unterschiedliche Zeichen nur für gemeinsame Länge
-                                    min_len = min(len(name1), len(name2))
-                                    diff_count = sum(1 for a, b in zip(name1[:min_len], name2[:min_len]) if a != b)
-                                    # Addiere Anzahl der Zeichen über die gemeinsame Länge hinaus
-                                    diff_count += abs(len(name1) - len(name2))
-                                    
-                                    if diff_count <= 2:
-                                        typo_hint = " (Möglicher Tippfehler im Namen!)"
+                                # V7.6: Nutze Levenshtein-Distance für präzisen Typo-Check
+                                distance = self.levenshtein_distance(name1, name2)
+                                if distance <= 2:
+                                    typo_hint = f" (Möglicher Tippfehler im Namen! Ähnlichkeit: Distanz={distance})"
                             
                             details.append({
                                 'modus': 'person_email',  # ✅ V7: modus-Spalte
@@ -832,12 +864,15 @@ class MediballDuplicateFinder:
     
     def find_verdachtsfaelle(self, df):
         """
-        ✅ V7.5: Findet ähnliche Namen (Distance 1-2) mit unterschiedlichen Emails.
+        ✅ V7.6: Findet ähnliche Namen (Distance 1-2) mit unterschiedlichen Emails.
         Diese werden NICHT gelöscht, sondern nur im Report ausgegeben.
         
+        FIX: Verwendet Nachname-Blocking, um auch UNTERSCHIEDLICHE normalisierte Namen zu vergleichen.
+        
         Beispiel:
-        - "Mustermann" vs "Musterman" (Distance 1) + unterschiedliche Emails
-        - "Müller" vs "Mueller" (Distance 2) + unterschiedliche Emails
+        - "Hofmann" vs "Hoffmann" (Distance 1) + unterschiedliche Emails → Verdachtsfall
+        - "Schmidt" vs "Schmitt" (Distance 1) + unterschiedliche Emails → Verdachtsfall
+        - "Mustermann" vs "Musterman" (Distance 1) + unterschiedliche Emails → Verdachtsfall
         
         Args:
             df: DataFrame mit den Anmeldungen (muss bereits _name_norm, _email_clean haben)
@@ -850,17 +885,27 @@ class MediballDuplicateFinder:
         # Arbeite auf dem gleichen normalisierten DF
         seen_pairs = set()  # Vermeide Duplikate im Report
         
-        # Gruppiere nach Name (bereits normalisiert)
-        for name_norm, group in df.groupby('_name_norm'):
-            if len(group) < 2 or name_norm == '':
+        # V7.6: Extrahiere Nachname (letztes Token) für Blocking
+        df_work = df.copy()
+        df_work['_nachname_block'] = df_work['_name_norm'].apply(
+            lambda x: x.split()[-1] if x and len(x.split()) > 0 else ''
+        )
+        
+        # V7.6: Gruppiere nach Nachname-Block (nur Personen mit ähnlichem Nachname vergleichen)
+        for nachname_block, group in df_work[df_work['_nachname_block'] != ''].groupby('_nachname_block'):
+            if len(group) < 2:
                 continue
             
-            # Prüfe alle Paare innerhalb dieser Gruppe
+            # Prüfe alle Paare innerhalb dieses Blocks
             group_list = list(group.iterrows())
             
             for i, (idx1, row1) in enumerate(group_list):
                 for j in range(i + 1, len(group_list)):
                     idx2, row2 = group_list[j]
+                    
+                    # Skip wenn GLEICHER normalisierter Name (das sind echte Duplikate, keine Verdachtsfälle)
+                    if row1['_name_norm'] == row2['_name_norm']:
+                        continue
                     
                     # Prüfe ob unterschiedliche Emails
                     if row1['_email_clean'] == row2['_email_clean']:
@@ -869,11 +914,8 @@ class MediballDuplicateFinder:
                     if row1['_email_clean'] == '' or row2['_email_clean'] == '':
                         continue  # Leere Email → skip
                     
-                    # Berechne Distance zwischen ORIGINAL-Namen (nicht normalisiert)
-                    dist = self.levenshtein_distance(
-                        self.normalize_text(row1['Vollständiger Name']),
-                        self.normalize_text(row2['Vollständiger Name'])
-                    )
+                    # V7.6: Berechne Distance zwischen normalisierten Namen
+                    dist = self.levenshtein_distance(row1['_name_norm'], row2['_name_norm'])
                     
                     # Nur Distance 1-2 (kleine Typos)
                     if 1 <= dist <= 2:

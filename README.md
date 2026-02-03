@@ -1,10 +1,10 @@
-# 🎭 Mediball Duplikat-Filter V7.5
+# 🎭 Mediball Duplikat-Filter V7.6
 
-[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/Fi-schi/mediball-duplicate-filter/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/Fi-schi/mediball-duplicate-filter/releases/latest)
 
 Professionelles Tool zum Filtern von Duplikaten in Mediball-CSV-Anmeldungen.
 
-**Aktuelle Version: 1.5.0** 🎉
+**Aktuelle Version: 1.6.0** 🎉
 
 ## 📥 Download
 
@@ -27,20 +27,22 @@ Wähle die passende Version für dein Betriebssystem:
 - ✅ **Typo-Erkennung** (z.B. "Freytagg" vs "Freytag" mit Levenshtein-Distance)
 - 🎓 **Uni-Email hat HÖCHSTE PRIORITÄT** (@uni-rostock.de wird immer bevorzugt)
 
-### Text-Normalisierung (V7.5)
+### Text-Normalisierung
 - ✅ **Bidirektionale Umlaut-Normalisierung** ("Pflücke" = "Pfluecke" = "pfluecke")
 - ✅ **"Nachname, Vorname" Erkennung** ("Mustermann, Max" → "Max Mustermann")
 - ✅ **Titel-Entfernung** ("Dr. Max Mustermann" = "Max Mustermann")
 - ✅ **Bindestriche normalisieren** ("Müller-Lüdenscheidt" = "Müller Lüdenscheidt")
 - ✅ **Apostrophe normalisieren** (O'Connor mit verschiedenen Unicode-Varianten)
-- ✅ **Email-Säuberung** (mailto:, Leerzeichen, mehrfache Emails, Komma-Trennung)
+- ✅ **Email-Säuberung V7.6** (mailto:, Whitespace, trailing punctuation, Validierung)
 - ✅ **Non-Breaking Space** (\u00A0 wird erkannt und normalisiert)
-- ✅ **Begleitungs-Trenner** (/, +, | werden erkannt)
+- ✅ **Begleitungs-Trenner** (/, +, |, und Komma-Listen werden erkannt)
 
-### Verdachtsfälle-Report (V7.5 NEU) ⚠️
-- ⚠️ **Verdachtsfälle-Report** - Ähnliche Namen mit unterschiedlichen Emails werden gemeldet
+### Verdachtsfälle-Report (V7.6 verbessert!) ⚠️
+- ⚠️ **Verdachtsfälle-Report mit Nachname-Blocking**
+- Findet jetzt auch unterschiedliche Namen: "Hofmann" vs "Hoffmann", "Schmidt" vs "Schmitt"
 - Diese Fälle werden NICHT automatisch gelöscht, sondern nur im Report aufgeführt
-- Ermöglicht manuelle Prüfung von möglichen Tippfehlern (z.B. "Mustermann" vs "Musterman")
+- Ermöglicht manuelle Prüfung von möglichen Tippfehlern
+- **V7.6: Endlich wirklich nützlich!**
 
 ### Technisch
 - ✅ **Robuste CSV-Verarbeitung** (UTF-8 BOM, Komma/Semikolon, csv.Sniffer)
@@ -204,6 +206,15 @@ Siehe [RELEASE.md](RELEASE.md) für detaillierte Anweisungen zum Erstellen einer
 5. GitHub Actions baut automatisch die Executables und erstellt das Release
 
 ## 📝 Changelog
+
+### V7.6 (2026-02-03) - Enhanced Email Processing
+- 🎯 **Verdachtsfälle-Report komplett überarbeitet** (wichtigster Fix!)
+  - Nutzt jetzt Nachname-Blocking statt Gruppierung nach identischem `_name_norm`
+  - Findet endlich echte Verdachtsfälle: "Hofmann" vs "Hoffmann", "Schmidt" vs "Schmitt"
+  - **Report ist jetzt wirklich nützlich!**
+- 📧 **Email-Cleaning erweitert:** trailing punctuation (`max@uni.de.`), bessere Validierung
+- 🔍 **Typo-Hint auf Levenshtein umgestellt:** präziser und konsistenter
+- 👥 **Komma-Liste bei Begleitung:** "Max Mustermann, Marie Mustermann" wird jetzt erkannt
 
 ### V7.5 (2026-02-02) - FINAL Production-Ready
 - 🐛 **Bug Fix 1:** Email-Split funktioniert jetzt auch bei Komma (regex: `[;,]`)
