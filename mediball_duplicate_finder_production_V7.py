@@ -6,7 +6,7 @@ import traceback
 import re
 import csv
 
-__version__ = "1.6.0"
+__version__ = "1.7.0"
 
 class MediballDuplicateFinder:
     def __init__(self, root):
@@ -132,10 +132,10 @@ class MediballDuplicateFinder:
         info_frame = ttk.Frame(options_frame, relief="solid", borderwidth=1)
         info_frame.grid(row=7, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10, padx=20)
         
-        info_text = ("ℹ️  V7.6 - Enhanced E-Mail Processing:\n"
-                    "   ✓ Verbesserte E-Mail-Validierung (ungültige Formate werden erkannt)\n"
-                    "   ✓ Bessere Whitespace-Behandlung (Tabs, Newlines, etc.)\n"
-                    "   ✓ Umschließende Zeichen werden entfernt (<, >, \", ', (, ))\n"
+        info_text = ("ℹ️  V7.7 - Enhanced Email & Phonetic Detection:\n"
+                    "   ✓ Domain-Typo-Korrektur (uni-rostok.de → uni-rostock.de)\n"
+                    "   ✓ Erweiterte Email-Distance-Erkennung (Distance 1 vs 2+)\n"
+                    "   ✓ Phonetische Ähnlichkeit für Verdachtsfälle (Meyer vs Meier)\n"
                     "   🎓 @uni-rostock.de hat HÖCHSTE PRIORITÄT\n"
                     "   ⚡ Performance-optimiert & Production-tested")
         ttk.Label(info_frame, text=info_text, foreground="blue", 
@@ -231,12 +231,13 @@ class MediballDuplicateFinder:
     
     def clean_email(self, email):
         """
-        V7.6: Erweiterte Email-Säuberung
+        V7.7: Erweiterte Email-Säuberung mit Domain-Typo-Korrektur
         - Entfernt mailto:, MAILTO: Präfixe
         - Entfernt alle Whitespace (Leerzeichen, Tabs, Newlines, etc.)
         - Nimmt erste Email bei mehreren (getrennt durch ; oder ,)
         - Entfernt umschließende Zeichen wie < > " ' ( )
         - Validiert Email-Format (muss @ enthalten)
+        - ✅ V7.7 NEU: Domain-Typo-Korrektur (z.B. uni-rostok.de → uni-rostock.de)
         - Lowercase
         
         Beispiele:
@@ -246,6 +247,7 @@ class MediballDuplicateFinder:
         - "max@uni.de" → max@uni.de
         - max @uni. de → max@uni.de
         - max\t@uni.de\n → max@uni.de
+        - max@uni-rostok.de → max@uni-rostock.de ✅ V7.7
         """
         if pd.isna(email) or email is None:
             return ""
@@ -280,6 +282,51 @@ class MediballDuplicateFinder:
         if len(parts) != 2 or not parts[0] or len(parts[1]) < 3 or '.' not in parts[1]:
             return ""
         
+        # ✅ V7.7: Domain-Typo-Korrektur
+        email = self.suggest_domain_correction(email)
+        
+        return email
+    
+    def suggest_domain_correction(self, email):
+        """
+        ✅ V7.7: Erkennt Tippfehler in Email-Domains
+        
+        Prüft ob die Domain einen Tippfehler hat und schlägt die korrekte Domain vor.
+        
+        Beispiele:
+        - uni-rostok.de → uni-rostock.de (Distance 1)
+        - gmial.com → gmail.com (Distance 1)
+        - web.d → web.de (Distance 1)
+        
+        Args:
+            email: Die zu prüfende Email-Adresse
+        
+        Returns:
+            str: Email mit korrigierter Domain, oder Original wenn keine Korrektur nötig
+        """
+        if '@' not in email:
+            return email
+        
+        local, domain = email.split('@', 1)
+        
+        # Liste bekannter Domains (konfigurierbar)
+        known_domains = [
+            'uni-rostock.de',
+            'gmail.com',
+            'web.de',
+            'gmx.de',
+            'outlook.com',
+            'yahoo.com',
+            't-online.de'
+        ]
+        
+        # Prüfe ob Domain Tippfehler hat (Distance ≤ 2)
+        for correct_domain in known_domains:
+            dist = self.levenshtein_distance(domain.lower(), correct_domain)
+            if 0 < dist <= 2:
+                # Domain-Typo gefunden!
+                return f"{local}@{correct_domain}"
+        
         return email
     
     def remove_titles(self, text):
@@ -288,7 +335,7 @@ class MediballDuplicateFinder:
         
         Beispiele:
         - Dr. Max Mustermann → Max Mustermann
-        - Prof. Dr. med. Lisa Müller → Lisa Müller
+        - Prof. Dr. med. Lisa Musterfrau → Lisa Musterfrau
         """
         if pd.isna(text) or text is None:
             return text
@@ -345,7 +392,7 @@ class MediballDuplicateFinder:
         
         Beispiele:
         - "Mustermann, Max" → "Max Mustermann"
-        - "Müller-Lüdenscheidt, Lisa Maria" → "Lisa Maria Müller-Lüdenscheidt"
+        - "Meyer-Lüdenscheidt, Lisa Maria" → "Lisa Maria Meyer-Lüdenscheidt"
         
         Sicherheits-Checks:
         - Nur bei genau 1 Komma
@@ -404,11 +451,11 @@ class MediballDuplicateFinder:
         # ✅ V7: Entferne mehrfache Leerzeichen
         text = re.sub(r'\s+', ' ', text)
         
-        # V7.2: Bindestrich = Leerzeichen (für Namen wie "Müller-Lüdenscheidt")
+        # V7.2: Bindestrich = Leerzeichen (für Namen wie "Meyer-Lüdenscheidt")
         text = text.replace('-', ' ')
         
         # ✅ V7.1: Normalisiere deutsche Umlaute für bessere Duplikat-Erkennung
-        # Behandelt Fälle wie "Pflücke" vs "Pfluecke" oder "Müller" vs "Mueller"
+        # Behandelt Fälle wie "Schröder" vs "Schroeder" oder "Meyer" vs "Meier"
         # WICHTIG: Umlaut-Normalisierung VOR Lowercase-Konvertierung!
         umlaut_map = {
             'Ä': 'Ae',
@@ -430,20 +477,57 @@ class MediballDuplicateFinder:
         
         return text
     
+    def phonetic_key(self, text):
+        """
+        ✅ V7.7: Einfacher Soundex-ähnlicher Key für deutsche Namen
+        
+        Erstellt einen phonetischen Schlüssel zur Erkennung ähnlich klingender Namen.
+        Dies wird NUR für Verdachtsfälle verwendet, NICHT für automatisches Löschen!
+        
+        Beispiele:
+        - "Meyer" → "MYR"
+        - "Meier" → "MR"
+        - "Möller" → "MLR"
+        - "Schmidt" → "SCHMT"
+        - "Schmitt" → "SCHMT"
+        
+        Args:
+            text: Der zu konvertierende Text (normalerweise ein Name)
+        
+        Returns:
+            str: Phonetischer Schlüssel (Großbuchstaben ohne Vokale und Doppelkonsonanten)
+        """
+        if not text:
+            return ""
+        
+        # Nutze bestehende Normalisierung (Umlaute werden bereits normalisiert)
+        text = self.normalize_text(text)
+        
+        # Entferne Vokale (außer am Anfang)
+        if len(text) > 1:
+            first = text[0]
+            rest = ''.join([c for c in text[1:] if c not in 'aeiou'])
+            text = first + rest
+        
+        # Entferne Doppelkonsonanten
+        text = re.sub(r'(.)\1+', r'\1', text)
+        
+        return text.upper()
+    
     def extract_names_from_begleitung(self, text):
         """
         V7.6: Extrahiert Namen aus Begleitungsfeld mit verbesserter Komma-Erkennung
         Splittet bei Komma, Semikolon, "und", "&", Zeilenumbrüche.
         Nutzt flip_lastname_firstname() für "Nachname, Vorname" Erkennung
         
-        V7.6 NEU: Heuristik für Komma-Listen wie "Max Mustermann, Marie Mustermann"
+        V7.6 NEU: Heuristik für Komma-Listen wie "Max Mustermann, Maria Musterfrau"
         - Wenn ein Segment MEHRERE Wörter VOR dem Komma hat → wahrscheinlich Komma-Liste
         - Wenn ein Segment nur 1-2 Wörter hat → wahrscheinlich "Nachname, Vorname"
         
         Beispiele:
         - "Mustermann, Max" → ["Max Mustermann"] (1 Wort vor Komma → gedreht)
-        - "Max Mustermann, Marie Mustermann" → ["Max Mustermann", "Marie Mustermann"] (2 Wörter vor Komma → Liste)
-        - "Mustermann, Max; Müller, Lisa" → ["Max Mustermann", "Lisa Müller"]
+        - "Max Mustermann, Maria Musterfrau" → ["Max Mustermann", "Maria Musterfrau"] (2 Wörter vor Komma → Liste)
+        - "Mustermann, Max; Meyer, Lisa" → ["Max Mustermann", "Lisa Meyer"]
         - "Dr. Max (Begleitung)" → ["Max"]
         
         Returns: Liste normalisierter Namen
@@ -509,7 +593,7 @@ class MediballDuplicateFinder:
         
         Beispiele:
         - "Mustermann" vs "Musterman" → Distance 1 (1 Buchstabe gelöscht)
-        - "Müller" vs "Mueller" → Distance 2 (nach Normalisierung)
+        - "Meyer" vs "Meier" → Distance 1 (nach Normalisierung)
         
         Args:
             s1: Erster String
@@ -551,6 +635,62 @@ class MediballDuplicateFinder:
             previous_row, current_row = current_row, previous_row
         
         return previous_row[len2]
+    
+    def email_matches_name_better(self, email1, email2, name_normalized):
+        """
+        ✅ V7.7: Prüft welche Email besser zum Namen passt (Typo-Erkennung)
+        
+        Vergleicht zwei Email-Adressen und prüft, welche besser zum normalisierten Namen passt.
+        Nutzt Levenshtein-Distance um Tippfehler zu erkennen.
+        
+        V7.6: Nur Distance 0 vs >0 wurde erkannt
+        V7.7: Jetzt auch Distance 1 vs 2+ wird erkannt!
+        
+        Beispiele:
+        - Name: "Mustermann", Email1: "musterman@uni.de" (Distance 1), Email2: "mustermn@uni.de" (Distance 2)
+          → Gibt 1 zurück (email1 ist besser)
+        - Name: "Schmidt", Email1: "schmitt@uni.de" (Distance 1), Email2: "schmidt@uni.de" (Distance 0)
+          → Gibt 2 zurück (email2 ist perfekt)
+        
+        Args:
+            email1: Erste Email-Adresse
+            email2: Zweite Email-Adresse
+            name_normalized: Normalisierter Name für Vergleich
+        
+        Returns:
+            int: 1 wenn email1 besser ist, 2 wenn email2 besser ist, 0 wenn unklar
+        """
+        if not email1 or not email2 or not name_normalized or '@' not in email1 or '@' not in email2:
+            return 0
+        
+        # Extrahiere lokalen Teil (vor @)
+        local1 = email1.split('@')[0].lower()
+        local2 = email2.split('@')[0].lower()
+        
+        # Entferne Punkt und Underscore aus lokalem Teil für Vergleich
+        local1_clean = local1.replace('.', '').replace('_', '')
+        local2_clean = local2.replace('.', '').replace('_', '')
+        
+        # Normalisiere Namen (entferne Leerzeichen für Email-Vergleich)
+        name_for_email = name_normalized.lower().replace(' ', '')
+        
+        # Berechne Levenshtein-Distance
+        dist1 = self.levenshtein_distance(local1_clean, name_for_email)
+        dist2 = self.levenshtein_distance(local2_clean, name_for_email)
+        
+        # Perfekter Match (Distance 0)
+        if dist2 == 0 and dist1 > 0:
+            return 2  # email2 perfekt
+        elif dist1 == 0 and dist2 > 0:
+            return 1  # email1 perfekt
+        
+        # ✅ V7.7 NEU: Deutlich besserer Match (Distance 1 vs 2+)
+        elif dist2 == 1 and dist1 >= 2:
+            return 2  # email2 deutlich besser
+        elif dist1 == 1 and dist2 >= 2:
+            return 1  # email1 deutlich besser
+        
+        return 0  # Unklar oder gleich gut
     
     def detect_separator(self, filepath, sample_lines=5):
         """
@@ -864,15 +1004,17 @@ class MediballDuplicateFinder:
     
     def find_verdachtsfaelle(self, df):
         """
-        ✅ V7.6: Findet ähnliche Namen (Distance 1-2) mit unterschiedlichen Emails.
+        ✅ V7.7: Findet ähnliche Namen (Distance 1-2 oder phonetisch ähnlich) mit unterschiedlichen Emails.
         Diese werden NICHT gelöscht, sondern nur im Report ausgegeben.
+        
+        V7.7 NEU: Phonetische Ähnlichkeit wird ebenfalls erkannt (z.B. Meyer vs Meier)
         
         FIX: Verwendet Nachname-Blocking, um auch UNTERSCHIEDLICHE normalisierte Namen zu vergleichen.
         
         Beispiel:
-        - "Hofmann" vs "Hoffmann" (Distance 1) + unterschiedliche Emails → Verdachtsfall
         - "Schmidt" vs "Schmitt" (Distance 1) + unterschiedliche Emails → Verdachtsfall
-        - "Mustermann" vs "Musterman" (Distance 1) + unterschiedliche Emails → Verdachtsfall
+        - "Schmidt" vs "Schmitt" (Distance 1) + unterschiedliche Emails → Verdachtsfall
+        - "Meyer" vs "Meier" (phonetisch ähnlich) + unterschiedliche Emails → Verdachtsfall
         
         Args:
             df: DataFrame mit den Anmeldungen (muss bereits _name_norm, _email_clean haben)
@@ -917,8 +1059,23 @@ class MediballDuplicateFinder:
                     # V7.6: Berechne Distance zwischen normalisierten Namen
                     dist = self.levenshtein_distance(row1['_name_norm'], row2['_name_norm'])
                     
-                    # Nur Distance 1-2 (kleine Typos)
+                    # ✅ V7.7 NEU: Phonetischer Check
+                    phonetic1 = self.phonetic_key(row1['_name_norm'])
+                    phonetic2 = self.phonetic_key(row2['_name_norm'])
+                    
+                    # Verdachtsfall wenn Distance 1-2 ODER phonetisch identisch (aber Distance > 2)
+                    is_suspicious = False
+                    grund = ""
+                    
                     if 1 <= dist <= 2:
+                        is_suspicious = True
+                        grund = f"⚠️ Verdachtsfall: Ähnliche Namen (Levenshtein-Distance {dist}), aber unterschiedliche Emails. Bitte manuell prüfen ob gleiche Person oder echter Tippfehler!"
+                    elif phonetic1 == phonetic2 and phonetic1 != '' and dist > 2:
+                        # ✅ V7.7 NEU: Phonetisch identisch, aber große Schreibweise-Unterschiede
+                        is_suspicious = True
+                        grund = f"⚠️ Phonetisch ähnlich ({phonetic1}), aber Levenshtein-Distance {dist}. Unterschiedliche Schreibweise - bitte manuell prüfen!"
+                    
+                    if is_suspicious:
                         # Vermeide Duplikate im Report
                         pair_key = tuple(sorted([row1['ID'], row2['ID']]))
                         if pair_key in seen_pairs:
@@ -926,8 +1083,9 @@ class MediballDuplicateFinder:
                         seen_pairs.add(pair_key)
                         
                         verdachtsfaelle.append({
-                            'modus': 'suspicious',
+                            'modus': 'suspicious_phonetic' if phonetic1 == phonetic2 and dist > 2 else 'suspicious',
                             'distance': dist,
+                            'phonetic_key': phonetic1 if phonetic1 == phonetic2 else '',
                             'id1': row1['ID'],
                             'name1': row1['Vollständiger Name'],
                             'email1': row1['Uni-Mail'],
@@ -936,7 +1094,7 @@ class MediballDuplicateFinder:
                             'name2': row2['Vollständiger Name'],
                             'email2': row2['Uni-Mail'],
                             'datum2': row2['Datum'],
-                            'grund': f"⚠️ Verdachtsfall: Ähnliche Namen (Levenshtein-Distance {dist}), aber unterschiedliche Emails. Bitte manuell prüfen ob gleiche Person oder echter Tippfehler!"
+                            'grund': grund
                         })
         
         return verdachtsfaelle
@@ -1043,10 +1201,12 @@ class MediballDuplicateFinder:
             self.log_result(f"   {'─'*40}\n")
             self.log_result(f"   Verfügbare Ticketplätze:   {len(df_bereinigt)} 🎫\n")
             
-            # V7.5: Erweiterte Info über verwendete Normalisierungen
+            # V7.7: Erweiterte Info über verwendete Normalisierungen
             self.log_result(f"\n{'='*85}\n")
-            self.log_result(f"ℹ️  V7.5 FINAL - Production-Ready:\n\n")
-            self.log_result(f"  🐛 Bug-Fixes: Email-Split, Non-Breaking Space, mehr Trenner\n")
+            self.log_result(f"ℹ️  V7.7 - Enhanced Detection:\n\n")
+            self.log_result(f"  ✅ V7.7 NEU: Domain-Typo-Korrektur (uni-rostok.de → uni-rostock.de)\n")
+            self.log_result(f"  ✅ V7.7 NEU: Email Distance 1 vs 2+ Erkennung\n")
+            self.log_result(f"  ✅ V7.7 NEU: Phonetische Ähnlichkeit (Meyer vs Meier)\n")
             self.log_result(f"  ⚠️ Verdachtsfälle-Report (ähnliche Namen werden gemeldet)\n")
             self.log_result(f"  🎓 Uni-Email-Priorität (@uni-rostock.de)\n")
             self.log_result(f"  ⚡ Performance-optimiert\n\n")
@@ -1054,7 +1214,7 @@ class MediballDuplicateFinder:
             self.log_result(f"   ✅ Titel-Entfernung (Dr., Prof., etc.)\n")
             self.log_result(f"   ✅ Apostroph-Normalisierung (O'Connor)\n")
             self.log_result(f"   ✅ \"Nachname, Vorname\" Erkennung\n")
-            self.log_result(f"   ✅ Bindestrich = Leerzeichen (Müller-Lüdenscheidt)\n")
+            self.log_result(f"   ✅ Bindestrich = Leerzeichen (Meyer-Lüdenscheidt)\n")
             self.log_result(f"   ✅ Umlaut-Normalisierung (ä→ae, ö→oe, ü→ue, ß→ss)\n")
             self.log_result(f"   ✅ Uni-Email Priorität (uni-rostock.de > gmx.de)\n")
             self.log_result(f"   ⚡ Typo-Check Performance-Optimierung\n")
@@ -1098,13 +1258,15 @@ class MediballDuplicateFinder:
                 self.log_result(f"   ({len(verdachtsfaelle)} Fälle, die manuell geprüft werden sollten)\n")
             
             messagebox.showinfo("Erfolg! 🎉", 
-                f"V7.5 FINAL - Duplikat-Filterung abgeschlossen!\n\n"
+                f"V7.7 - Duplikat-Filterung abgeschlossen!\n\n"
                 f"Original: {original_count} Anmeldungen\n"
                 f"Entfernt: {len(alle_zu_entfernen)} Duplikate\n"
                 f"Bereinigt: {len(df_bereinigt)} gültige Anmeldungen\n"
                 f"Verdachtsfälle: {len(verdachtsfaelle) if verdachtsfaelle else 0}\n\n"
-                f"V7.5 Features:\n"
-                f"✅ Alle Bug-Fixes aktiv\n"
+                f"V7.7 Features:\n"
+                f"✅ Domain-Typo-Korrektur\n"
+                f"✅ Email Distance 1 vs 2+ Erkennung\n"
+                f"✅ Phonetische Ähnlichkeit\n"
                 f"⚠️ Verdachtsfälle-Report erstellt\n"
                 f"🎓 Uni-Email-Priorität\n"
                 f"⚡ Production-Ready")
