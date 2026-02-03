@@ -1013,7 +1013,7 @@ class MediballDuplicateFinder:
         
         Beispiel:
         - "Schmidt" vs "Schmitt" (Distance 1) + unterschiedliche Emails → Verdachtsfall
-        - "Schmidt" vs "Schmitt" (Distance 1) + unterschiedliche Emails → Verdachtsfall
+        - "Mustermann" vs "Musterman" (Distance 1) + unterschiedliche Emails → Verdachtsfall
         - "Meyer" vs "Meier" (phonetisch ähnlich) + unterschiedliche Emails → Verdachtsfall
         
         Args:
