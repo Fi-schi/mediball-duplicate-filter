@@ -6,7 +6,7 @@ import traceback
 import re
 import csv
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 
 class MediballDuplicateFinder:
     def __init__(self, root):
@@ -132,9 +132,10 @@ class MediballDuplicateFinder:
         info_frame = ttk.Frame(options_frame, relief="solid", borderwidth=1)
         info_frame.grid(row=7, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10, padx=20)
         
-        info_text = ("ℹ️  V7.5 FINAL - Production-Ready:\n"
-                    "   ✓ Alle Bug-Fixes (Email-Split, Non-Breaking Space, mehr Trenner)\n"
-                    "   ⚠️ NEU: Verdachtsfälle-Report (ähnliche Namen, manuell prüfen)\n"
+        info_text = ("ℹ️  V7.6 - Enhanced Email Processing:\n"
+                    "   ✓ Verbesserte Email-Validierung (ungültige Formate werden erkannt)\n"
+                    "   ✓ Bessere Whitespace-Behandlung (Tabs, Newlines, etc.)\n"
+                    "   ✓ Umschließende Zeichen werden entfernt (<, >, \", ', (, ))\n"
                     "   🎓 @uni-rostock.de hat HÖCHSTE PRIORITÄT\n"
                     "   ⚡ Performance-optimiert & Production-tested")
         ttk.Label(info_frame, text=info_text, foreground="blue", 
@@ -230,15 +231,21 @@ class MediballDuplicateFinder:
     
     def clean_email(self, email):
         """
-        V7.2: Robuste Email-Säuberung
+        V7.6: Erweiterte Email-Säuberung
         - Entfernt mailto:, MAILTO: Präfixe
-        - Entfernt Leerzeichen
+        - Entfernt alle Whitespace (Leerzeichen, Tabs, Newlines, etc.)
         - Nimmt erste Email bei mehreren (getrennt durch ; oder ,)
+        - Entfernt umschließende Zeichen wie < > " ' ( )
+        - Validiert Email-Format (muss @ enthalten)
         - Lowercase
         
         Beispiele:
         - MAILTO:max@uni.de → max@uni.de
         - max@uni.de;max@gmail.com → max@uni.de
+        - <max@uni.de> → max@uni.de
+        - "max@uni.de" → max@uni.de
+        - max @uni. de → max@uni.de
+        - max\t@uni.de\n → max@uni.de
         """
         if pd.isna(email) or email is None:
             return ""
@@ -248,8 +255,11 @@ class MediballDuplicateFinder:
         # Entferne mailto: oder MAILTO:
         email = re.sub(r'^mailto:', '', email, flags=re.IGNORECASE)
         
-        # Entferne Leerzeichen
-        email = email.replace(' ', '')
+        # V7.6: Entferne umschließende Zeichen wie < > " ' ( )
+        email = email.strip('<>"\'()')
+        
+        # V7.6: Entferne alle Whitespace-Zeichen (Leerzeichen, Tabs, Newlines, etc.)
+        email = re.sub(r'\s+', '', email)
         
         # Bei mehreren Emails (getrennt durch ; oder ,), nimm die erste
         if ';' in email or ',' in email:
@@ -257,6 +267,15 @@ class MediballDuplicateFinder:
         
         # Lowercase
         email = email.lower()
+        
+        # V7.6: Validiere Email-Format - muss @ enthalten und mindestens ein Zeichen davor und danach
+        if not email or '@' not in email:
+            return ""
+        
+        # V7.6: Einfache Validierung - min. 1 Zeichen vor @, min. 2 nach @ (für x@a.b)
+        parts = email.split('@')
+        if len(parts) != 2 or not parts[0] or len(parts[1]) < 3 or '.' not in parts[1]:
+            return ""
         
         return email
     
