@@ -6,7 +6,7 @@ import traceback
 import re
 import csv
 
-__version__ = "1.7.0"
+__version__ = "1.8.0"
 
 class MediballDuplicateFinder:
     def __init__(self, root):
@@ -132,12 +132,12 @@ class MediballDuplicateFinder:
         info_frame = ttk.Frame(options_frame, relief="solid", borderwidth=1)
         info_frame.grid(row=7, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10, padx=20)
         
-        info_text = ("ℹ️  V7.7 - Enhanced Email & Phonetic Detection:\n"
-                    "   ✓ Domain-Typo-Korrektur (uni-rostok.de → uni-rostock.de)\n"
-                    "   ✓ Erweiterte Email-Distance-Erkennung (Distance 1 vs 2+)\n"
-                    "   ✓ Phonetische Ähnlichkeit für Verdachtsfälle (Meyer vs Meier)\n"
-                    "   🎓 @uni-rostock.de hat HÖCHSTE PRIORITÄT\n"
-                    "   ⚡ Performance-optimiert & Production-tested")
+        info_text = ("ℹ️  V7.8 - Hybrid Domain-Korrektur:\n"
+                    "   ✓ Pattern-Check (Subdomains, TLD-Typos)\n"
+                    "   ✓ Known-Domains (uni-rostock.de, gmail.com, etc.)\n"
+                    "   📊 Domain-Learning (häufige Domains aus CSV)\n"
+                    "   🎓 Uni-Mail-Priorität\n"
+                    "   ⚡ Production-Ready")
         ttk.Label(info_frame, text=info_text, foreground="blue", 
                  font=('Arial', 9)).pack(padx=10, pady=10)
         
@@ -229,15 +229,15 @@ class MediballDuplicateFinder:
             domain.endswith('.ac.de')
         )
     
-    def clean_email(self, email):
+    def clean_email(self, email, learned_domains=[]):
         """
-        V7.7: Erweiterte Email-Säuberung mit Domain-Typo-Korrektur
+        V7.8: Erweiterte Email-Säuberung mit Hybrid Domain-Korrektur
         - Entfernt mailto:, MAILTO: Präfixe
         - Entfernt alle Whitespace (Leerzeichen, Tabs, Newlines, etc.)
         - Nimmt erste Email bei mehreren (getrennt durch ; oder ,)
         - Entfernt umschließende Zeichen wie < > " ' ( )
         - Validiert Email-Format (muss @ enthalten)
-        - ✅ V7.7 NEU: Domain-Typo-Korrektur (z.B. uni-rostok.de → uni-rostock.de)
+        - ✅ V7.8 NEU: Hybrid Domain-Korrektur (3-Stufen: Pattern + Known + Learning)
         - Lowercase
         
         Beispiele:
@@ -247,7 +247,8 @@ class MediballDuplicateFinder:
         - "max@uni.de" → max@uni.de
         - max @uni. de → max@uni.de
         - max\t@uni.de\n → max@uni.de
-        - max@uni-rostok.de → max@uni-rostock.de ✅ V7.7
+        - max@studnet.uni-rostock.de → max@student.uni-rostock.de ✅ V7.8
+        - max@web.dee → max@web.de ✅ V7.8
         """
         if pd.isna(email) or email is None:
             return ""
@@ -282,50 +283,196 @@ class MediballDuplicateFinder:
         if len(parts) != 2 or not parts[0] or len(parts[1]) < 3 or '.' not in parts[1]:
             return ""
         
-        # ✅ V7.7: Domain-Typo-Korrektur
-        email = self.suggest_domain_correction(email)
+        # ✅ V7.8: Hybrid Domain-Korrektur (3-Stufen)
+        email = self.suggest_domain_correction(email, learned_domains)
         
         return email
     
-    def suggest_domain_correction(self, email):
+    def _check_uni_rostock_subdomains(self, domain):
         """
-        ✅ V7.7: Erkennt Tippfehler in Email-Domains
-        
-        Prüft ob die Domain einen Tippfehler hat und schlägt die korrekte Domain vor.
+        ✅ V7.8: Erkennt Typos in Uni-Rostock-Subdomains.
         
         Beispiele:
-        - uni-rostok.de → uni-rostock.de (Distance 1)
-        - gmial.com → gmail.com (Distance 1)
-        - web.d → web.de (Distance 1)
+        - studnet.uni-rostock.de → student.uni-rostock.de
+        - studennt.uni-rostock.de → student.uni-rostock.de
+        - studnets.uni-rostock.de → students.uni-rostock.de
+        """
+        if 'uni-rostock.de' not in domain:
+            return domain
         
-        Args:
-            email: Die zu prüfende Email-Adresse
+        known_subdomains = [
+            'student.uni-rostock.de',
+            'students.uni-rostock.de',
+            'uni-rostock.de',
+            'mail.uni-rostock.de',
+            'webmail.uni-rostock.de'
+        ]
         
-        Returns:
-            str: Email mit korrigierter Domain, oder Original wenn keine Korrektur nötig
+        for correct in known_subdomains:
+            dist = self.levenshtein_distance(domain.lower(), correct)
+            if 0 < dist <= 2:
+                self.log_result(f"   📧 Subdomain-Korrektur: {domain} → {correct}\n")
+                return correct
+        
+        return domain
+    
+    def _check_tld_typos(self, domain):
+        """
+        ✅ V7.8: Erkennt Tippfehler in TLDs (.de, .com, .net, etc.)
+        
+        Beispiele:
+        - web.dee → web.de
+        - gmail.comm → gmail.com
+        - yahoo.nett → yahoo.net
+        """
+        tld_corrections = {
+            'dee': 'de',
+            'dde': 'de',
+            'ed': 'de',
+            'comm': 'com',
+            'ccom': 'com',
+            'ocm': 'com',
+            'con': 'com',
+            'nett': 'net',
+            'nte': 'net',
+            'orgg': 'org',
+            'ogr': 'org',
+            'edu': 'edu',  # Bleibt
+            'co.uk': 'co.uk'  # Bleibt
+        }
+        
+        parts = domain.split('.')
+        if len(parts) < 2:
+            return domain
+        
+        tld = parts[-1].lower()
+        
+        if tld in tld_corrections:
+            correct_tld = tld_corrections[tld]
+            corrected = '.'.join(parts[:-1]) + '.' + correct_tld
+            if corrected != domain:
+                self.log_result(f"   📧 TLD-Korrektur: {domain} → {corrected}\n")
+                return corrected
+        
+        return domain
+    
+    def _check_known_domains(self, domain):
+        """
+        ✅ V7.8: Prüft gegen vordefinierte Liste bekannter Domains.
+        
+        Wie in V7.7, aber als separate Methode für Hybrid-Ansatz.
+        """
+        known_domains = [
+            'uni-rostock.de',
+            'student.uni-rostock.de',
+            'students.uni-rostock.de',
+            'gmail.com',
+            'googlemail.com',
+            'web.de',
+            'gmx.de',
+            'gmx.net',
+            'outlook.com',
+            'hotmail.com',
+            'yahoo.com',
+            'yahoo.de',
+            't-online.de',
+            'freenet.de',
+            'posteo.de'
+        ]
+        
+        for correct in known_domains:
+            dist = self.levenshtein_distance(domain.lower(), correct)
+            if 0 < dist <= 2:
+                self.log_result(f"   📧 Known-Domain-Korrektur: {domain} → {correct}\n")
+                return correct
+        
+        return domain
+    
+    def _check_learned_domains(self, domain, learned_domains):
+        """
+        ✅ V7.8: Prüft Domain gegen aus CSV gelernte häufige Domains.
+        
+        Nur wenn Distance ≤ 2 und gelernte Domain mindestens 3x vorkommt.
+        """
+        if not learned_domains:
+            return domain
+        
+        for correct in learned_domains:
+            dist = self.levenshtein_distance(domain.lower(), correct)
+            if 0 < dist <= 2:
+                self.log_result(f"   📊 Learned-Domain-Korrektur: {domain} → {correct}\n")
+                return correct
+        
+        return domain
+    
+    def analyze_domain_frequencies(self, df):
+        """
+        ✅ V7.8: Analysiert alle Domains in CSV und findet häufige.
+        
+        Returns: Liste von Domains die mindestens 3x vorkommen
+        """
+        from collections import Counter
+        
+        domains = []
+        for email in df['_email_clean'].dropna():
+            if '@' in str(email):
+                domain = str(email).split('@')[-1].lower()
+                if domain and len(domain) > 3:  # Mindestlänge
+                    domains.append(domain)
+        
+        # Zähle Häufigkeiten
+        domain_counts = Counter(domains)
+        
+        # Nur Domains die mindestens 3x vorkommen
+        learned_domains = [d for d, count in domain_counts.items() if count >= 3]
+        
+        if learned_domains:
+            self.log_result(f"📊 {len(learned_domains)} häufige Domain(s) gefunden: {', '.join(learned_domains[:5])}\n")
+            if len(learned_domains) > 5:
+                self.log_result(f"   ... und {len(learned_domains)-5} weitere\n")
+        
+        return learned_domains
+    
+    def suggest_domain_correction(self, email, learned_domains=[]):
+        """
+        ✅ V7.8: 3-Stufen Hybrid Domain-Korrektur
+        
+        Stufe 1: Pattern-Check (Subdomains, TLD-Typos)
+        Stufe 2: Known-Domains-Check
+        Stufe 3: Learned-Domains-Check (aus CSV)
+        
+        Beispiele:
+        - studnet.uni-rostock.de → student.uni-rostock.de (Pattern)
+        - web.dee → web.de (TLD)
+        - uni-rostok.de → uni-rostock.de (Known)
+        - rare-company.dee → rare-company.de (TLD + Learning)
         """
         if '@' not in email:
             return email
         
         local, domain = email.split('@', 1)
+        original_domain = domain
         
-        # Liste bekannter Domains (konfigurierbar)
-        known_domains = [
-            'uni-rostock.de',
-            'gmail.com',
-            'web.de',
-            'gmx.de',
-            'outlook.com',
-            'yahoo.com',
-            't-online.de'
-        ]
+        # Stufe 1: Pattern-Check
+        # 1a) Uni-Rostock Subdomains
+        domain = self._check_uni_rostock_subdomains(domain)
+        if domain != original_domain:
+            return f"{local}@{domain}"
         
-        # Prüfe ob Domain Tippfehler hat (Distance ≤ 2)
-        for correct_domain in known_domains:
-            dist = self.levenshtein_distance(domain.lower(), correct_domain)
-            if 0 < dist <= 2:
-                # Domain-Typo gefunden!
-                return f"{local}@{correct_domain}"
+        # 1b) TLD-Typos
+        domain = self._check_tld_typos(domain)
+        if domain != original_domain:
+            return f"{local}@{domain}"
+        
+        # Stufe 2: Known-Domains
+        domain = self._check_known_domains(domain)
+        if domain != original_domain:
+            return f"{local}@{domain}"
+        
+        # Stufe 3: Learned-Domains
+        domain = self._check_learned_domains(domain, learned_domains)
+        if domain != original_domain:
+            return f"{local}@{domain}"
         
         return email
     
@@ -1169,7 +1316,18 @@ class MediballDuplicateFinder:
                 # Vorbereite DataFrame mit normalisierten Werten für Verdachtsfälle-Check
                 df_work = df.copy()
                 df_work['_name_norm'] = df_work['Vollständiger Name'].apply(self.normalize_text)
+                
+                # ✅ V7.8: Domain-Learning VOR dem Email-Cleaning
+                # Erste Pass: Email-Cleaning ohne learned_domains für Frequenz-Analyse
+                self.log_result("📊 Analysiere Domain-Häufigkeiten...\n")
                 df_work['_email_clean'] = df_work['Uni-Mail'].apply(self.clean_email)
+                learned_domains = self.analyze_domain_frequencies(df_work)
+                self.log_result("\n")
+                
+                # Zweite Pass: Email-Cleaning MIT learned_domains für finale Korrektur
+                df_work['_email_clean'] = df_work['Uni-Mail'].apply(
+                    lambda x: self.clean_email(x, learned_domains)
+                )
                 
                 self.log_result("🔍 Prüfe Verdachtsfälle (ähnliche Namen, unterschiedliche Emails)...\n")
                 verdachtsfaelle = self.find_verdachtsfaelle(df_work)
@@ -1201,12 +1359,14 @@ class MediballDuplicateFinder:
             self.log_result(f"   {'─'*40}\n")
             self.log_result(f"   Verfügbare Ticketplätze:   {len(df_bereinigt)} 🎫\n")
             
-            # V7.7: Erweiterte Info über verwendete Normalisierungen
+            # V7.8: Erweiterte Info über verwendete Normalisierungen
             self.log_result(f"\n{'='*85}\n")
-            self.log_result(f"ℹ️  V7.7 - Enhanced Detection:\n\n")
-            self.log_result(f"  ✅ V7.7 NEU: Domain-Typo-Korrektur (uni-rostok.de → uni-rostock.de)\n")
-            self.log_result(f"  ✅ V7.7 NEU: Email Distance 1 vs 2+ Erkennung\n")
-            self.log_result(f"  ✅ V7.7 NEU: Phonetische Ähnlichkeit (Meyer vs Meier)\n")
+            self.log_result(f"ℹ️  V7.8 - Hybrid Domain-Korrektur:\n\n")
+            self.log_result(f"  ✅ V7.8 NEU: Pattern-Check (Subdomains + TLD)\n")
+            self.log_result(f"  ✅ V7.8 NEU: Domain-Learning (häufige Domains aus CSV)\n")
+            self.log_result(f"  ✅ V7.7: Known-Domains (uni-rostock.de, gmail.com, etc.)\n")
+            self.log_result(f"  ✅ V7.7: Email Distance 1 vs 2+ Erkennung\n")
+            self.log_result(f"  ✅ V7.7: Phonetische Ähnlichkeit (Meyer vs Meier)\n")
             self.log_result(f"  ⚠️ Verdachtsfälle-Report (ähnliche Namen werden gemeldet)\n")
             self.log_result(f"  🎓 Uni-Email-Priorität (@uni-rostock.de)\n")
             self.log_result(f"  ⚡ Performance-optimiert\n\n")
@@ -1258,17 +1418,15 @@ class MediballDuplicateFinder:
                 self.log_result(f"   ({len(verdachtsfaelle)} Fälle, die manuell geprüft werden sollten)\n")
             
             messagebox.showinfo("Erfolg! 🎉", 
-                f"V7.7 - Duplikat-Filterung abgeschlossen!\n\n"
+                f"V7.8 - Duplikat-Filterung abgeschlossen!\n\n"
                 f"Original: {original_count} Anmeldungen\n"
                 f"Entfernt: {len(alle_zu_entfernen)} Duplikate\n"
                 f"Bereinigt: {len(df_bereinigt)} gültige Anmeldungen\n"
                 f"Verdachtsfälle: {len(verdachtsfaelle) if verdachtsfaelle else 0}\n\n"
-                f"V7.7 Features:\n"
-                f"✅ Domain-Typo-Korrektur\n"
-                f"✅ Email Distance 1 vs 2+ Erkennung\n"
-                f"✅ Phonetische Ähnlichkeit\n"
-                f"⚠️ Verdachtsfälle-Report erstellt\n"
-                f"🎓 Uni-Email-Priorität\n"
+                f"V7.8 Features:\n"
+                f"✅ Hybrid Domain-Korrektur\n"
+                f"📊 Domain-Learning aktiv\n"
+                f"🎓 Uni-Mail-Priorität\n"
                 f"⚡ Production-Ready")
             
         except Exception as e:
