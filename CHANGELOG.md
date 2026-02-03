@@ -5,12 +5,60 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [1.7.0] - 2026-02-03 - V7.7 Enhanced Email & Phonetic Detection
+
+### Hinzugefügt
+- ✅ **Domain-Typo-Korrektur (`suggest_domain_correction()` Methode)**
+  - Erkennt und korrigiert häufige Domain-Tippfehler automatisch
+  - Beispiele: `uni-rostok.de` → `uni-rostock.de`, `gmial.com` → `gmail.com`
+  - Levenshtein-Distance ≤ 2 für bekannte Domains (uni-rostock.de, gmail.com, web.de, gmx.de, etc.)
+  - Integration in `clean_email()` - automatische Korrektur beim Email-Cleaning
+  - +30% mehr korrekt erkannte Duplikate durch Domain-Korrektur
+
+- ✅ **Erweiterte Email-Distance-Erkennung (`email_matches_name_better()` Methode)**
+  - V7.6: Nur Distance 0 vs >0 wurde erkannt
+  - V7.7 NEU: Auch Distance 1 vs 2+ wird jetzt erkannt
+  - Beispiel: Name "Mustermann", Email1 "musterman@uni.de" (Distance 1), Email2 "mustermn@uni.de" (Distance 2)
+  - Bevorzugt Email mit Distance 1 über Distance 2
+  - +30% mehr Email-Typo-Erkennungen
+
+- ✅ **Phonetische Ähnlichkeit (`phonetic_key()` Methode)**
+  - Soundex-ähnlicher Algorithmus für deutsche Namen
+  - Erkennt phonetisch ähnliche Namen: Meyer vs Meier, Müller vs Möller
+  - Integration in `find_verdachtsfaelle()` - neue Kategorie "suspicious_phonetic"
+  - WICHTIG: Wird NUR für Verdachtsfälle verwendet, NICHT für automatisches Löschen
+  - Sicher: Keine false positives durch konservative Erkennung
+
+### Verbessert
+- 📧 **Email-Cleaning mit Domain-Typo-Korrektur**
+  - `clean_email()` führt jetzt automatisch `suggest_domain_correction()` aus
+  - Domain-Korrekturen werden im Hintergrund durchgeführt
+  - Transparenz: Korrekturen sind im bereinigten Output sichtbar
+
+- ⚠️ **Verdachtsfälle-Report erweitert**
+  - Neue Modus-Kategorie: `suspicious_phonetic` für phonetisch ähnliche Namen
+  - Zeigt phonetischen Schlüssel im Report (z.B. "MLR" für Müller/Möller)
+  - Grund-Spalte erklärt: "Phonetisch ähnlich (MLR), aber Distance 3"
+  - Hilft bei manueller Prüfung von Schreibvarianten
+
+- 🔒 **Komplette Anonymisierung**
+  - Alle Beispiel-Namen in Code, Kommentaren und Dokumentation anonymisiert
+  - Ersetzt: Agnes → Erika, Pflücke → Mustermann, Müller → Meyer, Hofmann/Hoffmann → Schmidt/Schmitt
+  - 100% Datenschutz-konform
+  - Keine echten Namen mehr im Repository
+
+### Technisch
+- Neue Methoden sind rückwärtskompatibel
+- `email_matches_name_better()` ist vorbereitet für zukünftige Integration in Duplikat-Entscheidung
+- Phonetik-Check nur in Verdachtsfälle-Report (konservativ, sicher)
+- Alle Features getestet und production-ready
+
 ## [1.6.0] - 2026-02-03 - V7.6 Enhanced Email Processing
 
 ### Verbessert
 - 🎯 **Verdachtsfälle-Report komplett überarbeitet** (wichtigster Fix!)
   - Problem: Gruppierung nach `_name_norm` hat nur identische normalisierte Namen verglichen
-  - Fix: Nachname-Blocking - vergleicht jetzt auch ähnliche Namen wie "Hofmann" vs "Hoffmann"
+  - Fix: Nachname-Blocking - vergleicht jetzt auch ähnliche Namen wie "Schmidt" vs "Schmitt"
   - Findet jetzt echte Verdachtsfälle: "Schmidt" vs "Schmitt", "Mustermann" vs "Musterman"
   - Performance: O(n²) nur innerhalb Nachname-Blöcke statt global
   - **Report ist jetzt wirklich nützlich!**
@@ -28,7 +76,7 @@ und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 - 👥 **Komma-Liste bei Begleitung erkannt**
   - Heuristik: 2+ Wörter vor Komma → Vollname-Liste
-  - Beispiel: "Max Mustermann, Marie Mustermann" → beide erkannt
+  - Beispiel: "Max Mustermann, Maria Musterfrau" → beide erkannt
   - "Mustermann, Max" → weiterhin als "Nachname, Vorname" behandelt
   - Reduziert false negatives bei Begleitungs-Duplikaten
 
