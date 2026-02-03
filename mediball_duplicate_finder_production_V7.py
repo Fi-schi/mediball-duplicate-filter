@@ -132,8 +132,8 @@ class MediballDuplicateFinder:
         info_frame = ttk.Frame(options_frame, relief="solid", borderwidth=1)
         info_frame.grid(row=7, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10, padx=20)
         
-        info_text = ("ℹ️  V7.6 - Enhanced Email Processing:\n"
-                    "   ✓ Verbesserte Email-Validierung (ungültige Formate werden erkannt)\n"
+        info_text = ("ℹ️  V7.6 - Enhanced E-Mail Processing:\n"
+                    "   ✓ Verbesserte E-Mail-Validierung (ungültige Formate werden erkannt)\n"
                     "   ✓ Bessere Whitespace-Behandlung (Tabs, Newlines, etc.)\n"
                     "   ✓ Umschließende Zeichen werden entfernt (<, >, \", ', (, ))\n"
                     "   🎓 @uni-rostock.de hat HÖCHSTE PRIORITÄT\n"
@@ -846,7 +846,7 @@ class MediballDuplicateFinder:
                                 # V7.6: Nutze Levenshtein-Distance für präzisen Typo-Check
                                 distance = self.levenshtein_distance(name1, name2)
                                 if distance <= 2:
-                                    typo_hint = f" (Möglicher Tippfehler im Namen! Ähnlichkeit: Distance={distance})"
+                                    typo_hint = f" (Möglicher Tippfehler im Namen! Ähnlichkeit: Distanz={distance})"
                             
                             details.append({
                                 'modus': 'person_email',  # ✅ V7: modus-Spalte
