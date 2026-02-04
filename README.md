@@ -1,10 +1,10 @@
 # Mediball Duplikat-Filter V2.0
 
-[![Version](https://img.shields.io/badge/version-2.0.1-brightgreen.svg)](https://github.com/Fi-schi/mediball-duplicate-filter)
+[![Version](https://img.shields.io/badge/version-2.0.2-brightgreen.svg)](https://github.com/Fi-schi/mediball-duplicate-filter)
 
 ## Aktuelle Version
 
-**Aktuelle Version: 2.0.1** 🎉
+**Aktuelle Version: 2.0.2** 🎉
 
 ## Features
 

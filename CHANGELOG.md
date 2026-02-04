@@ -5,6 +5,52 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## V2.0.2 (2026-02-04) - Feature: Email-Korrektur statt Löschung
+
+### ✨ Neues Feature: Warteplatz-Erhaltung
+
+**Problem (V2.0.1):**
+- Person meldet sich um 10:00 mit Typo-Email an (ID 10)
+- Person meldet sich um 10:30 mit korrekter Email an (ID 42)
+- V2.0.1: ID 42 wird behalten, ID 10 gelöscht
+- **→ Warteplatz von 10:00 geht verloren!** ❌
+
+**Lösung (V2.0.2):**
+- ID 10: Email wird **automatisch korrigiert** (Typo → korrekt)
+- ID 42: Wird als Duplikat gelöscht (spätere Anmeldung)
+- **→ Warteplatz von 10:00 bleibt erhalten!** ✅
+
+### 📧 Email-Korrektur-Logik
+
+1. Erkenne beste Email für jede Person (höchster Quality-Score)
+2. Korrigiere alle Typo-Emails auf beste Email
+3. Entferne Duplikate (jetzt mit korrigierten Emails)
+4. Erstelle Korrektur-Report: `*_email_korrekturen.csv`
+
+### 🎛️ Neue GUI-Option
+
+- Checkbox: **"📧 Email-Typos automatisch korrigieren"**
+- Standard: **AN** (empfohlen)
+- Deaktivieren → Altes Verhalten (V2.0.1)
+
+### 📊 Neue Ausgabe-Datei
+
+**`*_email_korrekturen.csv`** - Liste aller korrigierten Emails:
+- Spalten: ID, Name, Alte Email, Neue Email, Begründung
+- Nur erstellt, wenn Korrekturen durchgeführt wurden
+
+### 📈 Impact
+
+| Szenario | V2.0.1 | V2.0.2 |
+|----------|--------|--------|
+| Frühe Anmeldung mit Typo-Email | ❌ Gelöscht | ✅ Email korrigiert |
+| Späte Anmeldung mit korrekter Email | ✅ Behalten | ❌ Gelöscht (Duplikat) |
+| Warteplatz | ❌ Geht verloren | ✅ Bleibt erhalten |
+
+**Empfehlung:** Alle Nutzer sollten auf V2.0.2 upgraden (bessere Warteplatz-Erhaltung).
+
+---
+
 ## V2.0.1 (2026-02-04) - Bugfix: Email-Name-Typo-Erkennung
 
 ### 🐛 Bug Fix

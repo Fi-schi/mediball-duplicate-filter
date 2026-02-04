@@ -6,7 +6,7 @@ import traceback
 import re
 import csv
 
-__version__ = "2.0.1"  # V2.0.1 - Bugfix: Email-Name-Typo-Erkennung
+__version__ = "2.0.2"  # V2.0.2 - Feature: Email-Korrektur statt Löschung (Warteplatz-Erhaltung)
 
 class MediballDuplicateFinder:
     def __init__(self, root):
@@ -118,6 +118,12 @@ class MediballDuplicateFinder:
                        variable=self.check_email_duplicates)
         email_check.grid(row=5, column=0, columnspan=2, sticky=tk.W, padx=20, pady=5)
         
+        # ✅ V2.0.2 NEU: Email-Typo-Korrektur
+        self.correct_email_typos_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(options_frame, 
+                       text="📧 Email-Typos automatisch korrigieren (empfohlen)", 
+                       variable=self.correct_email_typos_var).grid(row=5, column=1, sticky=tk.W, padx=20, pady=5)
+        
         # Output separator
         ttk.Label(options_frame, text="CSV-Trennzeichen für Ausgabe:").grid(
             row=6, column=0, sticky=tk.W, padx=20, pady=5)
@@ -132,7 +138,8 @@ class MediballDuplicateFinder:
         info_frame = ttk.Frame(options_frame, relief="solid", borderwidth=1)
         info_frame.grid(row=7, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10, padx=20)
         
-        info_text = ("ℹ️  V7.8 - Hybrid Domain-Korrektur:\n"
+        info_text = ("ℹ️  V2.0.2 - Email-Korrektur + Hybrid Domain:\n"
+                    "   📧 Email-Typo-Korrektur (NEU)\n"
                     "   ✓ Pattern-Check (Subdomains, TLD-Typos)\n"
                     "   ✓ Known-Domains (uni-rostock.de, gmail.com, etc.)\n"
                     "   📊 Domain-Learning (häufige Domains aus CSV)\n"
@@ -1019,6 +1026,92 @@ class MediballDuplicateFinder:
         
         return score
     
+    def find_best_email_for_person(self, group, person_name_norm):
+        """
+        ✅ V2.0.2: Findet die beste Email-Adresse für eine Person aus allen ihren Einträgen.
+        
+        Priorität:
+        1. Höchster Email-Quality-Score (uni-rostock.de, kein Typo)
+        2. Bei gleichem Score: Frühestes Datum
+        
+        Args:
+            group (DataFrame): Alle Einträge der Person
+            person_name_norm (str): Normalisierter Name
+            
+        Returns:
+            str: Beste Email-Adresse
+        """
+        best_email = None
+        best_score = 999999
+        best_date = None
+        
+        # Hole Personenname für Email-Qualitäts-Berechnung
+        person_name = group.iloc[0]['Vollständiger Name'] if len(group) > 0 else ""
+        all_emails = group['_email_clean'].tolist()
+        
+        for idx, row in group.iterrows():
+            email = row['_email_clean']
+            date = row['_datum_parsed']
+            
+            # Berechne Quality-Score
+            score = self.calculate_email_quality_score(email, all_emails, person_name)
+            
+            # Wähle beste Email (niedrigster Score = beste Qualität)
+            if score < best_score or (score == best_score and pd.notna(date) and (best_date is None or date < best_date)):
+                best_email = email
+                best_score = score
+                best_date = date
+        
+        return best_email
+    
+    def correct_email_typos(self, df):
+        """
+        ✅ V2.0.2: Korrigiert Email-Typos bei Personen mit mehreren Einträgen.
+        
+        - Findet beste Email für jede Person
+        - Korrigiert Typo-Emails auf beste Email
+        - Erstellt Korrektur-Report
+        
+        Args:
+            df (DataFrame): Eingabe-Daten mit normalisierten Spalten
+            
+        Returns:
+            tuple: (korrigiertes DataFrame, Korrektur-Report DataFrame)
+        """
+        df_corrected = df.copy()
+        corrections = []
+        
+        # Gruppiere nach normalisiertem Namen
+        for name_norm, group in df_corrected.groupby('_name_norm'):
+            if len(group) == 1:
+                continue  # Nur eine Anmeldung, keine Korrektur nötig
+            
+            # Finde beste Email
+            best_email = self.find_best_email_for_person(group, name_norm)
+            
+            # Korrigiere alle Einträge mit schlechterer Email
+            for idx, row in group.iterrows():
+                current_email = row['_email_clean']
+                
+                if current_email != best_email and best_email is not None:
+                    # Email-Typo erkannt → Korrigiere
+                    original_email = row['Uni-Mail']
+                    df_corrected.at[idx, 'Uni-Mail'] = best_email
+                    df_corrected.at[idx, '_email_clean'] = best_email
+                    
+                    # Speichere Korrektur für Report
+                    corrections.append({
+                        'ID': row['ID'],
+                        'Vollständiger Name': row['Vollständiger Name'],
+                        'Alte Email': original_email,
+                        'Neue Email (korrigiert)': best_email,
+                        'Datum': row['Datum'],
+                        'Begründung': f'Email-Typo korrigiert (beste Email: {best_email})'
+                    })
+        
+        corrections_df = pd.DataFrame(corrections)
+        return df_corrected, corrections_df
+    
     def prioritize_within_name_group(self, group):
         """
         ✅ V7.8: Intelligente Priorisierung bei gleichem Namen
@@ -1567,6 +1660,42 @@ class MediballDuplicateFinder:
                 else:
                     self.log_result("   ✓ Keine Begleitungs-Duplikate gefunden\n\n")
             
+            # ✅ V2.0.2 NEU: Email-Typo-Korrektur (VOR Duplikat-Erkennung)
+            corrections_df = pd.DataFrame()
+            if mode in ['person', 'alle'] and self.correct_email_typos_var.get():
+                self.log_result("📧 Korrigiere Email-Typos...\n")
+                
+                # Vorbereite DataFrame mit normalisierten Werten
+                df_for_correction = df.copy()
+                df_for_correction['_name_norm'] = df_for_correction['Vollständiger Name'].apply(self.normalize_text)
+                
+                # Domain-Learning für Email-Cleaning
+                df_for_correction['_email_clean'] = df_for_correction['Uni-Mail'].apply(self.clean_email)
+                learned_domains = self.analyze_domain_frequencies(df_for_correction)
+                df_for_correction['_email_clean'] = df_for_correction['Uni-Mail'].apply(
+                    lambda x: self.clean_email(x, learned_domains)
+                )
+                
+                # Füge _datum_parsed für find_best_email_for_person hinzu
+                df_for_correction['_datum_parsed'] = df_for_correction['Datum'].apply(self.parse_datetime)
+                
+                # Korrigiere Email-Typos
+                df_corrected, corrections_df = self.correct_email_typos(df_for_correction)
+                
+                # Übertrage korrigierte Emails zurück zum Haupt-DataFrame
+                df['Uni-Mail'] = df_corrected['Uni-Mail']
+                
+                if not corrections_df.empty:
+                    self.log_result(f"   ✅ {len(corrections_df)} Email-Typos korrigiert\n\n")
+                    # Zeige max 3 Beispiele
+                    for i, corr in corrections_df.head(3).iterrows():
+                        self.log_result(f"   📧 ID {corr['ID']}: {corr['Alte Email']} → {corr['Neue Email (korrigiert)']}\n")
+                    if len(corrections_df) > 3:
+                        self.log_result(f"   ... und {len(corrections_df)-3} weitere (siehe Email-Korrekturen-Report)\n")
+                    self.log_result("\n")
+                else:
+                    self.log_result("   ✓ Keine Email-Korrekturen nötig\n\n")
+            
             # Personen-Duplikate
             behalten_gruende = {}  # ✅ V7.9: Tracke Gründe für behaltene Einträge
             if mode in ['person', 'alle']:
@@ -1654,11 +1783,12 @@ class MediballDuplicateFinder:
             self.log_result(f"   {'─'*40}\n")
             self.log_result(f"   Verfügbare Ticketplätze:   {len(df_bereinigt)} 🎫\n")
             
-            # V7.8: Erweiterte Info über verwendete Normalisierungen
+            # V2.0.2: Erweiterte Info über verwendete Normalisierungen
             self.log_result(f"\n{'='*85}\n")
-            self.log_result(f"ℹ️  V7.8 - Hybrid Domain-Korrektur:\n\n")
-            self.log_result(f"  ✅ V7.8 NEU: Pattern-Check (Subdomains + TLD)\n")
-            self.log_result(f"  ✅ V7.8 NEU: Domain-Learning (häufige Domains aus CSV)\n")
+            self.log_result(f"ℹ️  V2.0.2 - Email-Korrektur + Hybrid Domain:\n\n")
+            self.log_result(f"  ✅ V2.0.2 NEU: Email-Typo-Korrektur (Warteplatz-Erhaltung)\n")
+            self.log_result(f"  ✅ V7.8: Pattern-Check (Subdomains + TLD)\n")
+            self.log_result(f"  ✅ V7.8: Domain-Learning (häufige Domains aus CSV)\n")
             self.log_result(f"  ✅ V7.7: Known-Domains (uni-rostock.de, gmail.com, etc.)\n")
             self.log_result(f"  ✅ V7.7: Email Distance 1 vs 2+ Erkennung\n")
             self.log_result(f"  ✅ V7.7: Phonetische Ähnlichkeit (Meyer vs Meier)\n")
@@ -1712,13 +1842,22 @@ class MediballDuplicateFinder:
                 self.log_result(f"⚠️  Verdachtsfälle-Report gespeichert: {Path(verdacht_file).name}\n")
                 self.log_result(f"   ({len(verdachtsfaelle)} Fälle, die manuell geprüft werden sollten)\n")
             
+            # ✅ V2.0.2 NEU: Email-Korrekturen-Report speichern
+            if not corrections_df.empty:
+                corrections_file = str(Path(self.output_file).parent / (Path(self.output_file).stem + "_email_korrekturen.csv"))
+                corrections_df.to_csv(corrections_file, index=False, encoding='utf-8-sig', sep=output_sep)
+                self.log_result(f"📧 Email-Korrekturen-Report gespeichert: {Path(corrections_file).name}\n")
+                self.log_result(f"   ({len(corrections_df)} Email-Korrekturen durchgeführt)\n")
+            
             messagebox.showinfo("Erfolg! 🎉", 
-                f"V7.8 - Duplikat-Filterung abgeschlossen!\n\n"
+                f"V2.0.2 - Duplikat-Filterung abgeschlossen!\n\n"
                 f"Original: {original_count} Anmeldungen\n"
                 f"Entfernt: {len(alle_zu_entfernen)} Duplikate\n"
                 f"Bereinigt: {len(df_bereinigt)} gültige Anmeldungen\n"
+                f"Email-Korrekturen: {len(corrections_df) if not corrections_df.empty else 0}\n"
                 f"Verdachtsfälle: {len(verdachtsfaelle) if verdachtsfaelle else 0}\n\n"
-                f"V7.8 Features:\n"
+                f"V2.0.2 Features:\n"
+                f"📧 Email-Typo-Korrektur (NEU)\n"
                 f"✅ Hybrid Domain-Korrektur\n"
                 f"📊 Domain-Learning aktiv\n"
                 f"🎓 Uni-Mail-Priorität\n"
