@@ -578,6 +578,7 @@ class MediballDuplicateFinder:
         Normalisiert Text für Vergleich
         V7.2: Erweitert mit Titel-Entfernung, Apostroph-Normalisierung, 
               Nachname/Vorname-Erkennung und Bindestrich-Normalisierung
+        V7.9: Sonderzeichen-Filter für Distance-Berechnung
         """
         if pd.isna(text) or text is None:
             return ""
@@ -594,6 +595,10 @@ class MediballDuplicateFinder:
         
         # V7.2: Entferne akademische Titel
         text = self.remove_titles(text)
+        
+        # ✅ V7.9: Sonderzeichen für Vergleich entfernen
+        # (Original bleibt für Anzeige erhalten)
+        text = self.clean_name_for_comparison(text)
         
         # ✅ V7: Entferne mehrfache Leerzeichen
         text = re.sub(r'\s+', ' ', text)
@@ -783,6 +788,74 @@ class MediballDuplicateFinder:
         
         return previous_row[len2]
     
+    def clean_name_for_comparison(self, name):
+        """
+        ✅ V7.9: Entfernt Sonderzeichen für Distance-Berechnung
+        
+        Erlaubt nur:
+        - Buchstaben (a-z, A-Z, Umlaute)
+        - Leerzeichen
+        - Apostroph (für O'Connor)
+        - Bindestrich (für Meyer-Müller)
+        
+        🔒 Beispiele (ANONYMISIERT):
+        - "Max!!! Mustermann" → "Max Mustermann"
+        - "Max 😊 Mustermann" → "Max Mustermann"
+        - "Max (Extern)" → "Max Extern"
+        
+        WICHTIG: Nur für Vergleich, nicht für Anzeige!
+        """
+        if pd.isna(name) or name is None:
+            return ""
+        
+        name = str(name).strip()
+        
+        # Erlaubte Zeichen: Buchstaben, Space, Apostroph, Bindestrich
+        # Umlaute explizit erlauben
+        cleaned = re.sub(r"[^a-zA-ZäöüÄÖÜßáéíóúàèìòùâêîôû\s'\-]", "", name)
+        
+        # Mehrfache Leerzeichen normalisieren
+        cleaned = re.sub(r'\s+', ' ', cleaned)
+        
+        return cleaned.strip()
+    
+    def get_email_comparison_reason(self, email1, email2):
+        """
+        ✅ V7.9: Unterscheidet zwischen Typo und Variante
+        
+        Returns:
+        - "Typo erkannt" (Distance 1-2, eine Email hat Score > 0)
+        - "Email-Variante (beide valide)" (beide valide, z.B. max@ vs m@)
+        - "Unterschiedliche Emails" (Distance > 2)
+        
+        🔒 Beispiele (ANONYMISIERT):
+        - max.mustermann@ vs max.musermann@ → "Typo erkannt"
+        - max.mustermann@ vs m.mustermann@ → "Email-Variante (beide valide)"
+        """
+        if '@' not in email1 or '@' not in email2:
+            return "Unterschiedliche Emails"
+        
+        local1, domain1 = email1.split('@', 1)
+        local2, domain2 = email2.split('@', 1)
+        
+        if domain1 != domain2:
+            return "Unterschiedliche Domains"
+        
+        dist = self.levenshtein_distance(local1, local2)
+        
+        if dist == 0:
+            return "Identische Emails"
+        elif dist <= 2:
+            # Prüfe ob beide "valide" erscheinen (keine Typos)
+            # Heuristik: wenn beide kurz und gültig → Variante
+            # wenn eine deutlich länger/kompletter → andere ist Typo
+            if abs(len(local1) - len(local2)) <= 2:
+                return "Email-Variante (beide valide)"
+            else:
+                return "Typo erkannt"
+        else:
+            return "Unterschiedliche Emails"
+    
     def email_matches_name_better(self, email1, email2, name_normalized):
         """
         ✅ V7.7: Prüft welche Email besser zum Namen passt (Typo-Erkennung)
@@ -889,6 +962,7 @@ class MediballDuplicateFinder:
     def prioritize_within_name_group(self, group):
         """
         ✅ V7.8: Intelligente Priorisierung bei gleichem Namen
+        ✅ V7.9: Fügt behalten_grund-Spalte hinzu
         
         Neue Prioritäts-Reihenfolge:
         1. Uni-Email > Private Email
@@ -914,8 +988,10 @@ class MediballDuplicateFinder:
         group['_has_uni_email'] = group['_email_clean'].apply(self.is_uni_email)
         
         uni_emails = group[group['_has_uni_email']]
+        uni_email_preferred = False
         if not uni_emails.empty and len(group) > len(uni_emails):
             group = uni_emails
+            uni_email_preferred = True
         
         # ✅ NEU: Schritt 2: Email-Qualitäts-Check
         # Berechne Scores für ALLE Emails in der Gruppe (wird später wiederverwendet)
@@ -924,16 +1000,40 @@ class MediballDuplicateFinder:
             lambda email: self.calculate_email_quality_score(email, group['_email_clean'].tolist())
         )
         
+        email_quality_better = False
         if len(group) > 1:
             # Behalte nur Email(s) mit bestem Score
             best_score = group['_email_quality_score'].min()
             group_filtered = group[group['_email_quality_score'] == best_score]
+            if len(group_filtered) < len(group):
+                email_quality_better = True
         else:
             group_filtered = group
         
         # Schritt 3: Datum & ID (wie bisher)
         group_sorted = group_filtered.sort_values(['_datum_parsed', '_id_num'], ascending=[True, True], na_position='last')
-        return group_sorted.iloc[0], group
+        
+        kept_row = group_sorted.iloc[0].copy()
+        
+        # ✅ V7.9: Grund speichern
+        if len(group) > 1:
+            if uni_email_preferred:
+                kept_row['behalten_grund'] = 'Uni-Email bevorzugt'
+            elif email_quality_better:
+                kept_row['behalten_grund'] = 'Beste Email-Qualität'
+            elif pd.notna(kept_row['_datum_parsed']) and any(pd.notna(group['_datum_parsed'])):
+                # Prüfe ob es tatsächlich ein früheres Datum ist
+                earliest_date = group['_datum_parsed'].min()
+                if kept_row['_datum_parsed'] == earliest_date:
+                    kept_row['behalten_grund'] = 'Früheste Anmeldung'
+                else:
+                    kept_row['behalten_grund'] = 'Niedrigste ID (Fallback)'
+            else:
+                kept_row['behalten_grund'] = 'Niedrigste ID (Fallback)'
+        else:
+            kept_row['behalten_grund'] = 'Einzige Anmeldung'
+        
+        return kept_row, group
     
     def detect_separator(self, filepath, sample_lines=5):
         """
@@ -1110,12 +1210,14 @@ class MediballDuplicateFinder:
     def find_personen_duplikate(self, df):
         """
         V7.2: Findet doppelte Anmeldungen derselben Person
+        V7.9: Fügt behalten_grund-Tracking hinzu
         PRIMÄR: Gleicher Name = gleiche Person (wichtig für Mediball)
         SEKUNDÄR: Auch gleiche Email prüfen (zusätzlich, wenn aktiviert)
         PERFORMANCE: Typo-Check nur innerhalb Email-Gruppen (500x schneller!)
         """
         zu_entfernen = []
         details = []
+        behalten_gruende = {}  # ✅ V7.9: Speichere Gründe für behaltene Einträge
         
         df_work = df.copy()
         
@@ -1130,6 +1232,10 @@ class MediballDuplicateFinder:
             if len(group) > 1:
                 # ✅ V7.8: Nutze intelligente Priorisierung mit Email-Quality-Scoring
                 beste_anmeldung, group_with_scores = self.prioritize_within_name_group(group)
+                
+                # ✅ V7.9: Speichere Grund für behaltene Anmeldung
+                if 'behalten_grund' in beste_anmeldung:
+                    behalten_gruende[beste_anmeldung.name] = beste_anmeldung['behalten_grund']
                 
                 # Alle anderen sind Duplikate
                 for idx, dup_row in group_with_scores.iterrows():
@@ -1157,7 +1263,7 @@ class MediballDuplicateFinder:
                             (beste_anmeldung['_email_clean'] != '')
                         )
                         
-                        # V7.8: Email-Qualitäts-Hinweis
+                        # V7.9: Email-Vergleichs-Hinweis mit Unterscheidung zwischen Typo und Variante
                         email_hinweis = ""
                         if email_unterschiedlich:
                             dup_email = dup_row['_email_clean']
@@ -1172,17 +1278,20 @@ class MediballDuplicateFinder:
                             elif beste_is_uni and not dup_is_uni:
                                 email_hinweis = f" 🎓 HINWEIS: Private Email ({dup_row['Uni-Mail']}) vs. Uni-Email ({beste_anmeldung['Uni-Mail']}) - Uni-Email hat Priorität!"
                             else:
+                                # ✅ V7.9: Verwende neue Email-Vergleichsfunktion
+                                reason = self.get_email_comparison_reason(dup_email, beste_email)
+                                
                                 # ✅ V7.8: Verwende bereits berechnete Email-Qualität (keine Neuberechnung!)
                                 dup_quality = dup_row['_email_quality_score']
                                 beste_quality = beste_anmeldung['_email_quality_score']
                                 
                                 if dup_quality > beste_quality:
-                                    email_hinweis = f" 📧 HINWEIS: Email-Typo erkannt ({dup_row['Uni-Mail']} Score={dup_quality}) vs. bessere Email ({beste_anmeldung['Uni-Mail']} Score={beste_quality})"
+                                    email_hinweis = f" 📧 HINWEIS: {reason} ({dup_row['Uni-Mail']} Score={dup_quality}) vs. ({beste_anmeldung['Uni-Mail']} Score={beste_quality})"
                                     # Log zur Runtime (erlaubt mit echten Namen)
                                     self.log_result(f"   📧 Email-Qualität: {name} - {dup_row['Uni-Mail']} (Score {dup_quality}) → {beste_anmeldung['Uni-Mail']} (Score {beste_quality})\n")
                                 else:
                                     # Gleiche Qualität (beide Emails haben Distance 0 oder gleichen Typo-Score) oder keine Typos gefunden
-                                    email_hinweis = f" ⚠️ ACHTUNG: Unterschiedliche Emails ({dup_row['Uni-Mail']} vs {beste_anmeldung['Uni-Mail']})"
+                                    email_hinweis = f" ⚠️ ACHTUNG: {reason} ({dup_row['Uni-Mail']} vs {beste_anmeldung['Uni-Mail']})"
                         
                         details.append({
                             'modus': 'person_name',  # ✅ V7: modus-Spalte
@@ -1249,7 +1358,7 @@ class MediballDuplicateFinder:
                                 'behalten_email': erste_anmeldung['Uni-Mail']
                             })
         
-        return zu_entfernen, details
+        return zu_entfernen, details, behalten_gruende
     
     def find_verdachtsfaelle(self, df):
         """
@@ -1395,11 +1504,12 @@ class MediballDuplicateFinder:
                     self.log_result("   ✓ Keine Begleitungs-Duplikate gefunden\n\n")
             
             # Personen-Duplikate
+            behalten_gruende = {}  # ✅ V7.9: Tracke Gründe für behaltene Einträge
             if mode in ['person', 'alle']:
                 self.log_result("🔍 Prüfe doppelte Personen (primär: Name)...\n")
                 if self.check_email_duplicates.get():
                     self.log_result("   ✓ Email-basierte Duplikate werden zusätzlich geprüft\n")
-                personen_entfernen, personen_details = self.find_personen_duplikate(df)
+                personen_entfernen, personen_details, behalten_gruende = self.find_personen_duplikate(df)
                 alle_zu_entfernen.extend(personen_entfernen)
                 alle_details.extend(personen_details)
                 
@@ -1451,6 +1561,25 @@ class MediballDuplicateFinder:
             # Entferne Duplikate
             alle_zu_entfernen = sorted(list(set(alle_zu_entfernen)))
             df_bereinigt = df.drop(index=alle_zu_entfernen).reset_index(drop=True)
+            
+            # ✅ V7.9: Füge behalten_grund-Spalte hinzu
+            df_bereinigt['behalten_grund'] = 'Einzige Anmeldung'
+            
+            # Übertrage Gründe aus behalten_gruende (Index aus df_work zu Index in df_bereinigt mappen)
+            if behalten_gruende:
+                # Erstelle Mapping von alten Indizes zu neuen
+                alte_zu_neue_index = {}
+                neue_idx = 0
+                for alte_idx in df.index:
+                    if alte_idx not in alle_zu_entfernen:
+                        alte_zu_neue_index[alte_idx] = neue_idx
+                        neue_idx += 1
+                
+                # Übertrage Gründe
+                for alte_idx, grund in behalten_gruende.items():
+                    if alte_idx in alte_zu_neue_index:
+                        neue_idx = alte_zu_neue_index[alte_idx]
+                        df_bereinigt.at[neue_idx, 'behalten_grund'] = grund
             
             # Statistik
             self.log_result(f"{'='*85}\n")
