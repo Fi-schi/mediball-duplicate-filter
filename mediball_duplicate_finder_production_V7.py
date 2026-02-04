@@ -867,7 +867,7 @@ class MediballDuplicateFinder:
             return 999  # Ungültige Email
         
         local_part, domain = email.split('@', 1)
-        min_distance = 0
+        typo_distance = 0  # 0 bedeutet: noch keine ähnliche Email gefunden
         
         for other_email in all_emails_in_group:
             if other_email == email or '@' not in other_email:
@@ -881,10 +881,10 @@ class MediballDuplicateFinder:
             
             dist = self.levenshtein_distance(local_part, other_local)
             
-            if dist > 0 and (min_distance == 0 or dist < min_distance):
-                min_distance = dist
+            if dist > 0 and (typo_distance == 0 or dist < typo_distance):
+                typo_distance = dist
         
-        return min_distance
+        return typo_distance
     
     def prioritize_within_name_group(self, group):
         """
@@ -1181,6 +1181,7 @@ class MediballDuplicateFinder:
                                     # Log zur Runtime (erlaubt mit echten Namen)
                                     self.log_result(f"   📧 Email-Qualität: {name} - {dup_row['Uni-Mail']} (Score {dup_quality}) → {beste_anmeldung['Uni-Mail']} (Score {beste_quality})\n")
                                 else:
+                                    # Gleiche Qualität (beide Emails haben Distance 0 oder gleichen Typo-Score) oder keine Typos gefunden
                                     email_hinweis = f" ⚠️ ACHTUNG: Unterschiedliche Emails ({dup_row['Uni-Mail']} vs {beste_anmeldung['Uni-Mail']})"
                         
                         details.append({
