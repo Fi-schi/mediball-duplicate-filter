@@ -1,10 +1,10 @@
-# Mediball Duplikat-Filter V7.8
+# Mediball Duplikat-Filter V2.0
 
-![Version Badge](https://img.shields.io/badge/version-1.8.0-brightgreen)
+[![Version](https://img.shields.io/badge/version-2.0.0-brightgreen.svg)](https://github.com/Fi-schi/mediball-duplicate-filter)
 
 ## Aktuelle Version
 
-1.8.0
+**Aktuelle Version: 2.0.0** 🎉
 
 ## Features
 
@@ -26,6 +26,13 @@
 ### Intelligente Text-Normalisierung
 V7.8
 
+### V2.0 NEU: Production Features
+- ✅ **Email-Quality-Scoring** (Typo-Emails werden erkannt, auch bei gleichem Namen!)
+- ✅ **Intelligente Email-Varianten-Erkennung** (max@ vs m@ = Variante, nicht Typo)
+- ✅ **Sonderzeichen-Filter** (Emojis, Excel-Artefakte werden ignoriert)
+- ✅ **"Warum behalten?"-Spalte** (Transparenz im bereinigten CSV)
+- 📋 **Verdachtsfälle-Checkliste** (Guidelines für Orga-Team)
+
 ## Changelog
 
 ### V7.8 (2026-02-03) - Hybrid Domain Intelligence
@@ -35,3 +42,22 @@ V7.8
 - 📊 **Domain-Learning:** Häufige Domains aus CSV werden automatisch erkannt (min. 3x)
 - ⚡ **Performance:** Optimiert für 1000+ Einträge, keine Verzögerung
 - 🎯 **Intelligenz:** Erkennt auch seltene Custom-Domains automatisch
+
+## 📋 "Warum behalten?"-Spalte (V2.0 NEU!)
+
+Das **bereinigte CSV** (`*_bereinigt.csv`) enthält jetzt eine Spalte `behalten_grund`:
+
+| behalten_grund | Bedeutung |
+|----------------|-----------|
+| `Einzige Anmeldung` | Keine Duplikate gefunden |
+| `Uni-Email bevorzugt` | Uni-Email hat Vorrang vor privater Email |
+| `Beste Email-Qualität` | Diese Email ist korrekt, andere hatte Tippfehler |
+| `Früheste Anmeldung` | Früheste Anmeldung wurde behalten |
+| `Niedrigste ID (Fallback)` | Bei absoluter Gleichheit: niedrigste ID |
+
+**Beispiel:**
+```csv
+ID,Name,Email,behalten_grund
+6699,Max Mustermann,max.mustermann@uni-rostock.de,Beste Email-Qualität
+```
+(Alle Namen sind anonymisiert)
