@@ -907,7 +907,7 @@ class MediballDuplicateFinder:
             group: DataFrame-Gruppe mit gleichem Namen
         
         Returns:
-            Series: Die beste (zu behaltende) Anmeldung
+            tuple: (beste_anmeldung, group_with_scores) - Die beste Anmeldung und die Gruppe mit berechneten Scores
         """
         # Schritt 1: Uni-Email-Check (wie bisher)
         group = group.copy()
@@ -918,19 +918,22 @@ class MediballDuplicateFinder:
             group = uni_emails
         
         # ✅ NEU: Schritt 2: Email-Qualitäts-Check
+        # Berechne Scores für ALLE Emails in der Gruppe (wird später wiederverwendet)
+        group = group.copy()
+        group['_email_quality_score'] = group['_email_clean'].apply(
+            lambda email: self.calculate_email_quality_score(email, group['_email_clean'].tolist())
+        )
+        
         if len(group) > 1:
-            group = group.copy()
-            group['_email_quality_score'] = group['_email_clean'].apply(
-                lambda email: self.calculate_email_quality_score(email, group['_email_clean'].tolist())
-            )
-            
             # Behalte nur Email(s) mit bestem Score
             best_score = group['_email_quality_score'].min()
-            group = group[group['_email_quality_score'] == best_score]
+            group_filtered = group[group['_email_quality_score'] == best_score]
+        else:
+            group_filtered = group
         
         # Schritt 3: Datum & ID (wie bisher)
-        group = group.sort_values(['_datum_parsed', '_id_num'], ascending=[True, True], na_position='last')
-        return group.iloc[0]
+        group_sorted = group_filtered.sort_values(['_datum_parsed', '_id_num'], ascending=[True, True], na_position='last')
+        return group_sorted.iloc[0], group
     
     def detect_separator(self, filepath, sample_lines=5):
         """
@@ -1126,10 +1129,10 @@ class MediballDuplicateFinder:
         for name, group in df_work[df_work['_name_norm'] != ''].groupby('_name_norm'):
             if len(group) > 1:
                 # ✅ V7.8: Nutze intelligente Priorisierung mit Email-Quality-Scoring
-                beste_anmeldung = self.prioritize_within_name_group(group)
+                beste_anmeldung, group_with_scores = self.prioritize_within_name_group(group)
                 
                 # Alle anderen sind Duplikate
-                for idx, dup_row in group.iterrows():
+                for idx, dup_row in group_with_scores.iterrows():
                     if idx == beste_anmeldung.name:  # .name gibt den Index zurück
                         continue
                         
@@ -1169,18 +1172,14 @@ class MediballDuplicateFinder:
                             elif beste_is_uni and not dup_is_uni:
                                 email_hinweis = f" 🎓 HINWEIS: Private Email ({dup_row['Uni-Mail']}) vs. Uni-Email ({beste_anmeldung['Uni-Mail']}) - Uni-Email hat Priorität!"
                             else:
-                                # ✅ V7.8: Prüfe Email-Qualität
-                                dup_quality = self.calculate_email_quality_score(dup_email, group['_email_clean'].tolist())
-                                beste_quality = self.calculate_email_quality_score(beste_email, group['_email_clean'].tolist())
+                                # ✅ V7.8: Verwende bereits berechnete Email-Qualität (keine Neuberechnung!)
+                                dup_quality = dup_row['_email_quality_score']
+                                beste_quality = beste_anmeldung['_email_quality_score']
                                 
                                 if dup_quality > beste_quality:
                                     email_hinweis = f" 📧 HINWEIS: Email-Typo erkannt ({dup_row['Uni-Mail']} Score={dup_quality}) vs. bessere Email ({beste_anmeldung['Uni-Mail']} Score={beste_quality})"
                                     # Log zur Runtime (erlaubt mit echten Namen)
                                     self.log_result(f"   📧 Email-Qualität: {name} - {dup_row['Uni-Mail']} (Score {dup_quality}) → {beste_anmeldung['Uni-Mail']} (Score {beste_quality})\n")
-                                elif beste_quality > dup_quality:
-                                    email_hinweis = f" 📧 HINWEIS: Bessere Email behalten ({beste_anmeldung['Uni-Mail']} Score={beste_quality}) vs. Email mit Typo ({dup_row['Uni-Mail']} Score={dup_quality})"
-                                    # Log zur Runtime (erlaubt mit echten Namen)
-                                    self.log_result(f"   📧 Email-Qualität: {name} - {beste_anmeldung['Uni-Mail']} (Score {beste_quality}) besser als {dup_row['Uni-Mail']} (Score {dup_quality})\n")
                                 else:
                                     email_hinweis = f" ⚠️ ACHTUNG: Unterschiedliche Emails ({dup_row['Uni-Mail']} vs {beste_anmeldung['Uni-Mail']})"
                         
