@@ -1042,7 +1042,7 @@ class MediballDuplicateFinder:
             str: Beste Email-Adresse
         """
         best_email = None
-        best_score = 999999
+        best_score = float('inf')  # Verwende infinity statt fester Zahl
         best_date = None
         
         # Hole Personenname für Email-Qualitäts-Berechnung
@@ -1057,7 +1057,14 @@ class MediballDuplicateFinder:
             score = self.calculate_email_quality_score(email, all_emails, person_name)
             
             # Wähle beste Email (niedrigster Score = beste Qualität)
-            if score < best_score or (score == best_score and pd.notna(date) and (best_date is None or date < best_date)):
+            # Prüfe Score-Verbesserung
+            is_better_score = score < best_score
+            # Prüfe gleichen Score aber früheres Datum
+            is_same_score_earlier = (score == best_score and 
+                                    pd.notna(date) and 
+                                    (best_date is None or date < best_date))
+            
+            if is_better_score or is_same_score_earlier:
                 best_email = email
                 best_score = score
                 best_date = date
