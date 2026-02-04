@@ -824,7 +824,7 @@ class MediballDuplicateFinder:
         ✅ V7.9: Unterscheidet zwischen Typo und Variante
         
         Returns:
-        - "Typo erkannt" (Distance 1-2, eine Email hat Score > 0)
+        - "Typo erkannt" (Distance 1-2, ähnliche Länge)
         - "Email-Variante (beide valide)" (beide valide, z.B. max@ vs m@)
         - "Unterschiedliche Emails" (Distance > 2)
         
@@ -846,13 +846,29 @@ class MediballDuplicateFinder:
         if dist == 0:
             return "Identische Emails"
         elif dist <= 2:
-            # Prüfe ob beide "valide" erscheinen (keine Typos)
-            # Heuristik: wenn beide kurz und gültig → Variante
-            # wenn eine deutlich länger/kompletter → andere ist Typo
-            if abs(len(local1) - len(local2)) <= 2:
+            # Prüfe ob es eine Abkürzung/Variante sein könnte
+            # Heuristik 1: Prüfe ob die kürzere Email eine Abkürzungsform sein könnte
+            # z.B. "max.mustermann" vs "m.mustermann" → eine Komponente ist verkürzt
+            parts1 = local1.split('.')
+            parts2 = local2.split('.')
+            
+            # Wenn gleiche Anzahl Teile und ein Teil ist deutlich kürzer → wahrscheinlich Abkürzung
+            if len(parts1) == len(parts2):
+                for p1, p2 in zip(parts1, parts2):
+                    if len(p1) > 2 and len(p2) <= 2 and p2[0] == p1[0]:
+                        # Ein Teil ist auf Initial gekürzt (z.B. max → m)
+                        return "Email-Variante (beide valide)"
+                    elif len(p2) > 2 and len(p1) <= 2 and p1[0] == p2[0]:
+                        # Umgekehrt
+                        return "Email-Variante (beide valide)"
+            
+            # Heuristik 2: Große Längendifferenz → eine ist Kurzform
+            len_diff = abs(len(local1) - len(local2))
+            if len_diff > 3:
                 return "Email-Variante (beide valide)"
-            else:
-                return "Typo erkannt"
+            
+            # Ähnliche Länge, kleine Distance → wahrscheinlich Typo
+            return "Typo erkannt"
         else:
             return "Unterschiedliche Emails"
     
