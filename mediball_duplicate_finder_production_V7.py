@@ -6,7 +6,7 @@ import traceback
 import re
 import csv
 
-__version__ = "1.8.0"
+__version__ = "2.0.0"  # V2.0 - Production Polish Release
 
 class MediballDuplicateFinder:
     def __init__(self, root):
