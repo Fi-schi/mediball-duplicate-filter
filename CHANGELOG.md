@@ -28,8 +28,8 @@ Neue Funktion: **Email-Name-Extraktion + Vergleich mit Personenname**
 - Extrahiert Namen aus Email (`max.musermann@...` → `max musermann`)
 - Vergleicht mit normalisiertem Personennamen (`Max Mustermann` → `max mustermann`)
 - Levenshtein-Distance:
-  - Distance 0: Email perfekt (Score +5)
-  - Distance 1-2: **Email hat Typo** (Score -10)
+  - Distance 0: Email perfekt (Score -5, besser)
+  - Distance 1-2: **Email hat Typo** (Score +10, schlechter)
   - Distance > 2: Abkürzung (Score neutral)
 
 ### 📊 Impact
