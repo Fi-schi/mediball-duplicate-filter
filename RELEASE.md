@@ -14,13 +14,13 @@ Diese Anleitung beschreibt, wie eine neue Release-Version erstellt wird.
 
 Aktualisiere die Versionsnummer in folgenden Dateien:
 - `VERSION` - Die Versionsnummer (z.B. `1.0.0`)
-- `mediball_duplicate_finder_production_V7.py` - Die `__version__` Variable
+- `mediball_duplicate_finder.py` - Die `__version__` Variable
 - `CHANGELOG.md` - Füge einen neuen Abschnitt für die Version hinzu
 
 ### 2. Commit und Push
 
 ```bash
-git add VERSION mediball_duplicate_finder_production_V7.py CHANGELOG.md
+git add VERSION mediball_duplicate_finder.py CHANGELOG.md
 git commit -m "Release v1.0.0"
 git push origin main
 ```
@@ -102,7 +102,7 @@ Falls GitHub Actions nicht verwendet werden kann:
 pip install -r requirements.txt pyinstaller
 
 # Build für aktuelles OS
-pyinstaller --name=Mediball_Duplikat_Filter --onefile --windowed mediball_duplicate_finder_production_V7.py
+pyinstaller --name=Mediball_Duplikat_Filter --onefile --windowed mediball_duplicate_finder.py
 
 # Executable findest du in: dist/
 ```
