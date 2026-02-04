@@ -855,10 +855,10 @@ class MediballDuplicateFinder:
             # Wenn gleiche Anzahl Teile und ein Teil ist deutlich kürzer → wahrscheinlich Abkürzung
             if len(parts1) == len(parts2):
                 for p1, p2 in zip(parts1, parts2):
-                    if len(p1) > 2 and len(p2) <= 2 and p2[0] == p1[0]:
+                    if len(p1) > 2 and len(p2) > 0 and len(p2) <= 2 and p2[0] == p1[0]:
                         # Ein Teil ist auf Initial gekürzt (z.B. max → m)
                         return "Email-Variante (beide valide)"
-                    elif len(p2) > 2 and len(p1) <= 2 and p1[0] == p2[0]:
+                    elif len(p2) > 2 and len(p1) > 0 and len(p1) <= 2 and p1[0] == p2[0]:
                         # Umgekehrt
                         return "Email-Variante (beide valide)"
             
