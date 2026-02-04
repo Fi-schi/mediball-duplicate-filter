@@ -27,7 +27,7 @@ jobs:
       
       - name: Build Executable
         run: |
-          pyinstaller --name=Mediball_Duplikat_Filter --onefile --windowed mediball_duplicate_finder_production_V7.py
+          pyinstaller --name=Mediball_Duplikat_Filter --onefile --windowed mediball_duplicate_finder.py
       
       - name: Upload Windows Executable
         uses: actions/upload-artifact@v4
@@ -56,7 +56,7 @@ jobs:
       
       - name: Build Executable
         run: |
-          pyinstaller --name=Mediball_Duplikat_Filter --onefile --windowed mediball_duplicate_finder_production_V7.py
+          pyinstaller --name=Mediball_Duplikat_Filter --onefile --windowed mediball_duplicate_finder.py
       
       - name: Make Executable
         run: chmod +x dist/Mediball_Duplikat_Filter
@@ -88,7 +88,7 @@ jobs:
       
       - name: Build Executable
         run: |
-          pyinstaller --name=Mediball_Duplikat_Filter --onefile --windowed mediball_duplicate_finder_production_V7.py
+          pyinstaller --name=Mediball_Duplikat_Filter --onefile --windowed mediball_duplicate_finder.py
       
       - name: Make Executable
         run: chmod +x dist/Mediball_Duplikat_Filter
