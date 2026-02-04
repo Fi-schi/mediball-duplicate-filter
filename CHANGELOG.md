@@ -5,6 +5,45 @@ Alle wichtigen Änderungen an diesem Projekt werden in dieser Datei dokumentiert
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/1.0.0/),
 und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## V2.0.1 (2026-02-04) - Bugfix: Email-Name-Typo-Erkennung
+
+### 🐛 Bug Fix
+
+**Problem:** V2.0 erkannte Typos in Email-Adressen nicht, wenn Buchstaben **fehlten**.
+
+**Beispiel (anonymisiert):**
+```
+Person: Max Mustermann
+Email 1: max.musermann@uni.de  ← FEHLER (t fehlt)
+Email 2: max.mustermann@uni.de ← KORREKT
+
+V2.0: Beide als unterschiedlich behandelt
+V2.0.1: Email 1 als Typo erkannt ✅
+```
+
+### ✅ Lösung
+
+Neue Funktion: **Email-Name-Extraktion + Vergleich mit Personenname**
+
+- Extrahiert Namen aus Email (`max.musermann@...` → `max musermann`)
+- Vergleicht mit normalisiertem Personennamen (`Max Mustermann` → `max mustermann`)
+- Levenshtein-Distance:
+  - Distance 0: Email perfekt (Score +5)
+  - Distance 1-2: **Email hat Typo** (Score -10)
+  - Distance > 2: Abkürzung (Score neutral)
+
+### 📊 Impact
+
+| Szenario | V2.0 | V2.0.1 |
+|----------|------|--------|
+| Fehlender Buchstabe in Email | ❌ Nicht erkannt | ✅ Als Typo erkannt |
+| Falsche Buchstaben in Email | ✅ Erkannt | ✅ Erkannt (verbessert) |
+| Abkürzungen in Email | ✅ OK | ✅ OK |
+
+**Empfehlung:** Alle V2.0-Nutzer sollten auf V2.0.1 upgraden.
+
+---
+
 ## V2.0 (2026-02-04) - Production Polish Release 🏆
 
 ### 🎉 Major Release: V2.0

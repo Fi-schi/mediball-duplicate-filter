@@ -6,7 +6,7 @@ import traceback
 import re
 import csv
 
-__version__ = "2.0.0"  # V2.0 - Production Polish Release
+__version__ = "2.0.1"  # V2.0.1 - Bugfix: Email-Name-Typo-Erkennung
 
 class MediballDuplicateFinder:
     def __init__(self, root):
@@ -629,6 +629,31 @@ class MediballDuplicateFinder:
         
         return text
     
+    def extract_name_from_email(self, email):
+        """
+        Extrahiert den Namen aus dem Local-Part einer Email.
+        
+        Beispiel (anonymisiert):
+            max.mustermann@uni.de → max mustermann
+            m.mustermann@uni.de   → m mustermann
+        
+        Args:
+            email (str): Email-Adresse
+            
+        Returns:
+            str: Normalisierter Name aus Email (lowercase, ohne Sonderzeichen)
+        """
+        if not email or '@' not in email:
+            return ""
+        
+        local_part = email.split('@')[0]
+        
+        # Ersetze Trennzeichen durch Leerzeichen
+        name = local_part.replace('.', ' ').replace('_', ' ').replace('-', ' ')
+        
+        # Normalisiere (gleiche Logik wie normalize_text)
+        return self.normalize_text(name)
+    
     def phonetic_key(self, text):
         """
         ✅ V7.7: Einfacher Soundex-ähnlicher Key für deutsche Namen
@@ -928,36 +953,37 @@ class MediballDuplicateFinder:
         
         return 0  # Unklar oder gleich gut
     
-    def calculate_email_quality_score(self, email, all_emails_in_group):
+    def calculate_email_quality_score(self, email, all_emails_in_group, person_name=""):
         """
-        ✅ V7.8: Berechnet Quality-Score für Email-Typo-Erkennung
+        ✅ V2.0.1: Berechnet Quality-Score für Email-Typo-Erkennung
         
-        Score-System:
-        - 0 = Perfekte Email (kein anderes Email ähnlicher)
-        - 1 = Email mit Distance 1 (Typo wahrscheinlich)
-        - 2+ = Email mit Distance 2+ (größerer Fehler)
-        
-        Niedriger Score = Bessere Email
+        Score-System (basierend auf Email-zu-Email und Email-zu-Person Vergleich):
+        - Niedriger Score = Bessere Email
+        - Vergleicht mit anderen Emails in der Gruppe
+        - NEU: Vergleicht Email-Namen mit Personenname
         
         ✅ Beispiel (ANONYMISIERT):
-        - max.musermann@uni-rostock.de (Typo) → Score 1
-        - max.mustermann@uni-rostock.de (korrekt) → Score 0
+        - max.musermann@uni-rostock.de (Typo) → höherer Score
+        - max.mustermann@uni-rostock.de (korrekt) → niedriger Score
         
         🔒 WICHTIG: Nur anonymisierte Beispiele in Docstrings!
         
         Args:
             email: Die zu prüfende Email-Adresse
             all_emails_in_group: Liste aller Email-Adressen in der Gruppe
+            person_name: Vollständiger Name der Person (optional)
         
         Returns:
-            int: Quality-Score (0 = beste Qualität)
+            int: Quality-Score (niedriger = besser)
         """
         if '@' not in email:
             return 999  # Ungültige Email
         
+        score = 0
         local_part, domain = email.split('@', 1)
-        typo_distance = 0  # 0 bedeutet: noch keine ähnliche Email gefunden
         
+        # Alter Email-zu-Email-Vergleich (bleibt erhalten)
+        typo_distance = 0
         for other_email in all_emails_in_group:
             if other_email == email or '@' not in other_email:
                 continue
@@ -973,7 +999,25 @@ class MediballDuplicateFinder:
             if dist > 0 and (typo_distance == 0 or dist < typo_distance):
                 typo_distance = dist
         
-        return typo_distance
+        score = typo_distance
+        
+        # NEU V2.0.1: Email-Name-vs-Person-Name-Check
+        if person_name:
+            email_name = self.extract_name_from_email(email)
+            person_name_norm = self.normalize_text(person_name)
+            
+            # Vergleiche Namen
+            distance = self.levenshtein_distance(email_name, person_name_norm)
+            
+            if distance == 0:
+                # Email-Name perfekt (max.mustermann@... und "Max Mustermann")
+                score -= 5
+            elif 1 <= distance <= 2:
+                # Email-Name hat Typo (max.musermann@... statt mustermann)
+                score += 10
+            # distance > 2: Abkürzung (m.mustermann@...), neutral (Score +0)
+        
+        return score
     
     def prioritize_within_name_group(self, group):
         """
@@ -1012,8 +1056,12 @@ class MediballDuplicateFinder:
         # ✅ NEU: Schritt 2: Email-Qualitäts-Check
         # Berechne Scores für ALLE Emails in der Gruppe (wird später wiederverwendet)
         group = group.copy()
+        
+        # V2.0.1: Hole Personenname für Email-Name-Vergleich
+        person_name = group.iloc[0]['Vollständiger Name'] if len(group) > 0 else ""
+        
         group['_email_quality_score'] = group['_email_clean'].apply(
-            lambda email: self.calculate_email_quality_score(email, group['_email_clean'].tolist())
+            lambda email: self.calculate_email_quality_score(email, group['_email_clean'].tolist(), person_name)
         )
         
         email_quality_better = False
