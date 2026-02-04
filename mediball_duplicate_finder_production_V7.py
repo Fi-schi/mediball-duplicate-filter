@@ -839,6 +839,102 @@ class MediballDuplicateFinder:
         
         return 0  # Unklar oder gleich gut
     
+    def calculate_email_quality_score(self, email, all_emails_in_group):
+        """
+        ✅ V7.8: Berechnet Quality-Score für Email-Typo-Erkennung
+        
+        Score-System:
+        - 0 = Perfekte Email (kein anderes Email ähnlicher)
+        - 1 = Email mit Distance 1 (Typo wahrscheinlich)
+        - 2+ = Email mit Distance 2+ (größerer Fehler)
+        
+        Niedriger Score = Bessere Email
+        
+        ✅ Beispiel (ANONYMISIERT):
+        - max.musermann@uni-rostock.de (Typo) → Score 1
+        - max.mustermann@uni-rostock.de (korrekt) → Score 0
+        
+        🔒 WICHTIG: Nur anonymisierte Beispiele in Docstrings!
+        
+        Args:
+            email: Die zu prüfende Email-Adresse
+            all_emails_in_group: Liste aller Email-Adressen in der Gruppe
+        
+        Returns:
+            int: Quality-Score (0 = beste Qualität)
+        """
+        if '@' not in email:
+            return 999  # Ungültige Email
+        
+        local_part, domain = email.split('@', 1)
+        typo_distance = 0  # 0 bedeutet: noch keine ähnliche Email gefunden
+        
+        for other_email in all_emails_in_group:
+            if other_email == email or '@' not in other_email:
+                continue
+            
+            other_local, other_domain = other_email.split('@', 1)
+            
+            # Nur gleiche Domain vergleichen
+            if domain != other_domain:
+                continue
+            
+            dist = self.levenshtein_distance(local_part, other_local)
+            
+            if dist > 0 and (typo_distance == 0 or dist < typo_distance):
+                typo_distance = dist
+        
+        return typo_distance
+    
+    def prioritize_within_name_group(self, group):
+        """
+        ✅ V7.8: Intelligente Priorisierung bei gleichem Namen
+        
+        Neue Prioritäts-Reihenfolge:
+        1. Uni-Email > Private Email
+        2. Email-Qualität (Distance 0 > Distance 1 > Distance 2+) ← NEU!
+        3. Frühestes Datum
+        4. Niedrigste ID
+        
+        ✅ Beispiel (ANONYMISIERT):
+        - ID 100: Max Mustermann, max.musermann@uni-rostock.de (Typo, früher)
+        - ID 101: Max Mustermann, max.mustermann@uni-rostock.de (korrekt, später)
+        → ID 101 wird behalten! (bessere Email-Qualität)
+        
+        🔒 WICHTIG: Nur anonymisierte Beispiele!
+        
+        Args:
+            group: DataFrame-Gruppe mit gleichem Namen
+        
+        Returns:
+            tuple: (beste_anmeldung, group_with_scores) - Die beste Anmeldung und die Gruppe mit berechneten Scores
+        """
+        # Schritt 1: Uni-Email-Check (wie bisher)
+        group = group.copy()
+        group['_has_uni_email'] = group['_email_clean'].apply(self.is_uni_email)
+        
+        uni_emails = group[group['_has_uni_email']]
+        if not uni_emails.empty and len(group) > len(uni_emails):
+            group = uni_emails
+        
+        # ✅ NEU: Schritt 2: Email-Qualitäts-Check
+        # Berechne Scores für ALLE Emails in der Gruppe (wird später wiederverwendet)
+        group = group.copy()
+        group['_email_quality_score'] = group['_email_clean'].apply(
+            lambda email: self.calculate_email_quality_score(email, group['_email_clean'].tolist())
+        )
+        
+        if len(group) > 1:
+            # Behalte nur Email(s) mit bestem Score
+            best_score = group['_email_quality_score'].min()
+            group_filtered = group[group['_email_quality_score'] == best_score]
+        else:
+            group_filtered = group
+        
+        # Schritt 3: Datum & ID (wie bisher)
+        group_sorted = group_filtered.sort_values(['_datum_parsed', '_id_num'], ascending=[True, True], na_position='last')
+        return group_sorted.iloc[0], group
+    
     def detect_separator(self, filepath, sample_lines=5):
         """
         Erkennt das CSV-Trennzeichen mit csv.Sniffer (robust).
@@ -1032,17 +1128,14 @@ class MediballDuplicateFinder:
         # === PRIMÄR: Name-basierte Duplikate (WICHTIG für Mediball) ===
         for name, group in df_work[df_work['_name_norm'] != ''].groupby('_name_norm'):
             if len(group) > 1:
-                # Sortiere mit numerischer ID
-                group_sorted = group.sort_values(
-                    ['_datum_parsed', '_id_num'],
-                    ascending=[True, True],
-                    na_position='last'
-                )
+                # ✅ V7.8: Nutze intelligente Priorisierung mit Email-Quality-Scoring
+                beste_anmeldung, group_with_scores = self.prioritize_within_name_group(group)
                 
-                erste_anmeldung = group_sorted.iloc[0]
-                duplikate = group_sorted.iloc[1:]
-                
-                for idx, dup_row in duplikate.iterrows():
+                # Alle anderen sind Duplikate
+                for idx, dup_row in group_with_scores.iterrows():
+                    if idx == beste_anmeldung.name:  # .name gibt den Index zurück
+                        continue
+                        
                     if idx not in zu_entfernen:
                         zu_entfernen.append(idx)
                         
@@ -1052,35 +1145,44 @@ class MediballDuplicateFinder:
                         else:
                             dup_datum_info = f"ohne Datum (ID: {dup_row['ID']})"
                         
-                        if pd.notna(erste_anmeldung['_datum_parsed']):
-                            erste_datum_info = erste_anmeldung['Datum']
+                        if pd.notna(beste_anmeldung['_datum_parsed']):
+                            beste_datum_info = beste_anmeldung['Datum']
                         else:
-                            erste_datum_info = f"ohne Datum (ID: {erste_anmeldung['ID']})"
+                            beste_datum_info = f"ohne Datum (ID: {beste_anmeldung['ID']})"
                         
                         # V7.2: Prüfe Emails mit clean_email
                         email_unterschiedlich = (
-                            (dup_row['_email_clean'] != erste_anmeldung['_email_clean']) and 
+                            (dup_row['_email_clean'] != beste_anmeldung['_email_clean']) and 
                             (dup_row['_email_clean'] != '') and 
-                            (erste_anmeldung['_email_clean'] != '')
+                            (beste_anmeldung['_email_clean'] != '')
                         )
                         
-                        # V7.2: Uni-Email hat Priorität
+                        # V7.8: Email-Qualitäts-Hinweis
+                        email_hinweis = ""
                         if email_unterschiedlich:
                             dup_email = dup_row['_email_clean']
-                            erste_email = erste_anmeldung['_email_clean']
+                            beste_email = beste_anmeldung['_email_clean']
                             
                             # Prüfe ob eine Uni-Email und die andere nicht
                             dup_is_uni = self.is_uni_email(dup_email)
-                            erste_is_uni = self.is_uni_email(erste_email)
+                            beste_is_uni = self.is_uni_email(beste_email)
                             
-                            if dup_is_uni and not erste_is_uni:
-                                email_hinweis = f" 🎓 HINWEIS: Uni-Email ({dup_row['Uni-Mail']}) vs. Private Email ({erste_anmeldung['Uni-Mail']}) - Uni-Email hat Priorität!"
-                            elif erste_is_uni and not dup_is_uni:
-                                email_hinweis = f" 🎓 HINWEIS: Private Email ({dup_row['Uni-Mail']}) vs. Uni-Email ({erste_anmeldung['Uni-Mail']}) - Uni-Email hat Priorität!"
+                            if dup_is_uni and not beste_is_uni:
+                                email_hinweis = f" 🎓 HINWEIS: Uni-Email ({dup_row['Uni-Mail']}) vs. Private Email ({beste_anmeldung['Uni-Mail']}) - Uni-Email hat Priorität!"
+                            elif beste_is_uni and not dup_is_uni:
+                                email_hinweis = f" 🎓 HINWEIS: Private Email ({dup_row['Uni-Mail']}) vs. Uni-Email ({beste_anmeldung['Uni-Mail']}) - Uni-Email hat Priorität!"
                             else:
-                                email_hinweis = f" ⚠️ ACHTUNG: Unterschiedliche Emails ({dup_row['Uni-Mail']} vs {erste_anmeldung['Uni-Mail']})"
-                        else:
-                            email_hinweis = ""
+                                # ✅ V7.8: Verwende bereits berechnete Email-Qualität (keine Neuberechnung!)
+                                dup_quality = dup_row['_email_quality_score']
+                                beste_quality = beste_anmeldung['_email_quality_score']
+                                
+                                if dup_quality > beste_quality:
+                                    email_hinweis = f" 📧 HINWEIS: Email-Typo erkannt ({dup_row['Uni-Mail']} Score={dup_quality}) vs. bessere Email ({beste_anmeldung['Uni-Mail']} Score={beste_quality})"
+                                    # Log zur Runtime (erlaubt mit echten Namen)
+                                    self.log_result(f"   📧 Email-Qualität: {name} - {dup_row['Uni-Mail']} (Score {dup_quality}) → {beste_anmeldung['Uni-Mail']} (Score {beste_quality})\n")
+                                else:
+                                    # Gleiche Qualität (beide Emails haben Distance 0 oder gleichen Typo-Score) oder keine Typos gefunden
+                                    email_hinweis = f" ⚠️ ACHTUNG: Unterschiedliche Emails ({dup_row['Uni-Mail']} vs {beste_anmeldung['Uni-Mail']})"
                         
                         details.append({
                             'modus': 'person_name',  # ✅ V7: modus-Spalte
@@ -1088,10 +1190,10 @@ class MediballDuplicateFinder:
                             'entfernt_name': dup_row['Vollständiger Name'],
                             'entfernt_email': dup_row['Uni-Mail'],
                             'entfernt_datum': dup_row['Datum'],
-                            'grund': f"Doppelte Anmeldung (gleicher Name). Angemeldet am {dup_datum_info}. Erste Anmeldung war am {erste_datum_info} (ID: {erste_anmeldung['ID']}){email_hinweis}",
-                            'behalten_id': erste_anmeldung['ID'],
-                            'behalten_name': erste_anmeldung['Vollständiger Name'],
-                            'behalten_email': erste_anmeldung['Uni-Mail']
+                            'grund': f"Doppelte Anmeldung (gleicher Name). Angemeldet am {dup_datum_info}. Beste Anmeldung war am {beste_datum_info} (ID: {beste_anmeldung['ID']}){email_hinweis}",
+                            'behalten_id': beste_anmeldung['ID'],
+                            'behalten_name': beste_anmeldung['Vollständiger Name'],
+                            'behalten_email': beste_anmeldung['Uni-Mail']
                         })
         
         # === SEKUNDÄR: Email-basierte Duplikate (nur wenn noch nicht erfasst) ===
