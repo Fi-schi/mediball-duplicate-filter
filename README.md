@@ -9,8 +9,8 @@
 ## Features
 
 ### Duplikat-Erkennung
-- ✅ **V7.8 NEU: Hybrid Domain-Korrektur** (3-Stufen: Pattern + Known + Learning)
-- ✅ **V7.7: Domain-Typo-Korrektur** (uni-rostok.de → uni-rostock.de)
+- ✅ **V1.7.8 NEU: Hybrid Domain-Korrektur** (3-Stufen: Pattern + Known + Learning)
+- ✅ **V1.7.7: Domain-Typo-Korrektur** (uni-rostok.de → uni-rostock.de)
 
 ### Technisch
 - ✅ **Detaillierter Report** mit `modus`-Spalte (begleitung/person_name/person_email/suspicious/suspicious_phonetic/domain_learned)
@@ -35,7 +35,7 @@ V7.8
 
 ## Changelog
 
-### V7.8 (2026-02-03) - Hybrid Domain Intelligence
+### V1.7.8 (2026-02-03) - Hybrid Domain Intelligence
 - ✅ **V7.8 NEU: 3-Stufen Hybrid Domain-Korrektur** (+45% mehr Korrekturen)
 - 📧 **Pattern-Check:** Subdomain-Typos (studnet → student), TLD-Typos (.dee → .de)
 - 📋 **Known-Domains:** 15+ vordefinierte Domains (uni-rostock.de, gmail.com, etc.)
